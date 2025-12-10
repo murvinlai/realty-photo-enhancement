@@ -1,0 +1,62 @@
+{
+    "name": "realty-photo-enhancement",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+        "dev": "next dev",
+        "build": "next build",
+        "start": "next start",
+        "lint": "next lint",
+        "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && ELECTRON_START_URL=http://localhost:3000 electron .\"",
+        "dist": "npm run build && cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static && electron-builder"
+    },
+    "main": "electron/main.js",
+    "build": {
+        "appId": "com.realty.enhancement",
+        "productName": "Realty Photo Enhancer",
+        "asar": false,
+        "mac": {
+            "category": "public.app-category.photography",
+            "target": "zip",
+            "identity": null
+        },
+        "files": [
+            "electron/**/*",
+            "package.json"
+        ],
+        "extraResources": [
+            {
+                "from": ".next/standalone",
+                "to": "server",
+                "filter": [
+                    "**/*"
+                ]
+            }
+        ],
+        "directories": {
+            "output": "dist"
+        }
+    },
+    "dependencies": {
+        "@dnd-kit/core": "^6.3.1",
+        "@dnd-kit/sortable": "^10.0.0",
+        "@dnd-kit/utilities": "^3.2.2",
+        "@google/genai": "^1.31.0",
+        "@supabase/supabase-js": "^2.86.2",
+        "dotenv": "^17.2.3",
+        "file-saver": "^2.0.5",
+        "formidable": "^3.5.1",
+        "jszip": "^3.10.1",
+        "next": "latest",
+        "react": "latest",
+        "react-dom": "latest"
+    },
+    "devDependencies": {
+        "concurrently": "^9.2.1",
+        "electron": "^39.2.6",
+        "electron-builder": "^26.0.12",
+        "eslint": "^9",
+        "eslint-config-next": "latest",
+        "wait-on": "^9.0.3"
+    }
+}
