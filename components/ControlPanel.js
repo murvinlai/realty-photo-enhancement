@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useNotification } from '@/contexts/NotificationContext';
 import PresetWidget from './PresetWidget';
 
-export default function ControlPanel({ onEnhance, isEnhancing, disabled, photoCount, activeTabLabel, onOpenPresetManager, presetRefreshTrigger }) {
+export default function ControlPanel({ onEnhance, isEnhancing, disabled, photoCount, activeTabLabel, onOpenPresetManager, presetRefreshTrigger, onPresetSaved }) {
     const [instructions, setInstructions] = useState('');
     const defaultInstructions = "Increase exposure, make colors more vibrant, and sharpen details.";
 
@@ -67,7 +67,7 @@ export default function ControlPanel({ onEnhance, isEnhancing, disabled, photoCo
             setShowSaveModal(false);
             setNewPresetName('');
             setNewPresetDescription('');
-            fetchPresets();
+            if (onPresetSaved) onPresetSaved();
         }
     };
 

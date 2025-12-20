@@ -28,7 +28,7 @@ function SortablePresetItem({ preset, isEditing, onEdit, onDelete, onDuplicate, 
         setNodeRef,
         transform,
         transition,
-    } = useSortable({ id: preset.id, disabled: preset.is_global });
+    } = useSortable({ id: preset.id, disabled: false });
 
     const style = {
         transform: CSS.Transform.toString(transform),
@@ -39,7 +39,7 @@ function SortablePresetItem({ preset, isEditing, onEdit, onDelete, onDuplicate, 
         border: `1px solid ${isEditing ? 'var(--primary)' : 'var(--border)'}`,
         position: 'relative',
         height: '100%',
-        cursor: preset.is_global ? 'default' : 'grab',
+        cursor: 'grab',
         touchAction: 'none' // Required for pointer sensors
     };
 
@@ -158,12 +158,14 @@ export default function PresetManagementModal({ isOpen, onClose, onRefresh }) {
 
             const updates = items
                 .map((item, index) => {
-                    if (item.is_global) return null;
                     return {
                         id: item.id,
                         order_index: index,
-                        user_id: user.id, // REQUIRED for RLS
-                        is_global: false
+                        user_id: item.user_id || user.id, // Preserve original owner (e.g. admin) or default to current
+                        is_global: item.is_global, // Preserve global status
+                        name: item.name,
+                        description: item.description,
+                        settings: item.settings
                     };
                 })
                 .filter(Boolean);

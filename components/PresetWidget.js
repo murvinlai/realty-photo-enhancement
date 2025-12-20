@@ -24,9 +24,9 @@ export default function PresetWidget({ onSelectPreset, onManageClick, refreshTri
                 .from('enhancement_presets')
                 .select('*')
                 .or(`is_global.eq.true,user_id.eq.${user?.id}`)
-                .order('is_favorite', { ascending: false }) // Favorites always top
-                .order('last_used_at', { ascending: false, nullsFirst: false }) // Then recently used
-                .order('created_at', { ascending: false }); // Then new
+                // Match the sort order of the Manager (Order Index -> Date)
+                .order('order_index', { ascending: true }) // Respect manual order
+                .order('created_at', { ascending: false }); // Fallback for new items
 
             if (data) setPresets(data);
         } catch (error) {

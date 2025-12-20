@@ -35,3 +35,7 @@ next-env.d.ts
 
 # Electron
 electron-builder.yml
+
+# Data
+public/processed/
+public/uploads/

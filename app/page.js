@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import Header from '@/components/Header';
@@ -19,6 +19,7 @@ export default function Home() {
     const [activeTabLabel, setActiveTabLabel] = useState('Original');
     const [showPresetManager, setShowPresetManager] = useState(false);
     const [presetRefreshTrigger, setPresetRefreshTrigger] = useState(0);
+    const abortControllerRef = useRef(null);
 
     // Redirect to login if not authenticated
     useEffect(() => {
@@ -60,16 +61,44 @@ export default function Home() {
 
     const handleUploadComplete = (newFiles) => {
         // Add new files to originals array
-        const newOriginals = newFiles.map(file => ({
-            path: file.path,
-            originalName: file.originalName,
-            uploadedAt: Date.now()
-        }));
+        const newOriginals = newFiles.map(file => {
+            let displayOriginalName = file.originalName;
+
+            // If the server converted HEIC to JPG, update the display name extension
+            if ((file.originalName.toLowerCase().endsWith('.heic') || file.originalName.toLowerCase().endsWith('.heif')) &&
+                file.path.toLowerCase().endsWith('.jpg')) {
+                displayOriginalName = file.originalName.replace(/\.(heic|heif)$/i, '.jpg');
+            }
+
+            return {
+                path: file.path,
+                originalName: file.originalName, // Keep true original name for reference
+                displayName: displayOriginalName, // Use updated name for UI
+                uploadedAt: Date.now()
+            };
+        });
         setOriginals(prev => [...prev, ...newOriginals]);
+    };
+
+
+    const handleStop = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+        }
+        setIsEnhancing(false);
     };
 
     const handleEnhance = async (instructions) => {
         setIsEnhancing(true);
+
+        // Create new AbortController
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+        const signal = controller.signal;
 
         // Determine source images based on active tab
         let sourceImages = [];
@@ -151,6 +180,8 @@ export default function Home() {
         const MAX_CONCURRENT = parseInt(process.env.NEXT_PUBLIC_BATCH_SIZE || '5', 10);
 
         const processImage = async (src, index) => {
+            if (signal.aborted) return;
+
             // Update status to processing when actually starting
             setResults(prev => prev.map(result =>
                 result.id === newResultId ? {
@@ -168,12 +199,14 @@ export default function Home() {
                     body: JSON.stringify({
                         imagePath: src.path,
                         instructions
-                    })
+                    }),
+                    signal
                 });
 
                 const data = await response.json();
 
                 if (data.success) {
+                    if (signal.aborted) return;
                     setResults(prev => prev.map(result =>
                         result.id === newResultId ? {
                             ...result,
@@ -183,6 +216,7 @@ export default function Home() {
                         } : result
                     ));
                 } else {
+                    if (signal.aborted) return;
                     setResults(prev => prev.map(result =>
                         result.id === newResultId ? {
                             ...result,
@@ -193,6 +227,19 @@ export default function Home() {
                     ));
                 }
             } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.log('Request aborted');
+                    // Optionally update status to 'cancelled' if you want to show that
+                    setResults(prev => prev.map(result =>
+                        result.id === newResultId ? {
+                            ...result,
+                            images: result.images.map((img, i) =>
+                                i === index ? { ...img, status: 'pending' } : img // Revert to pending
+                            )
+                        } : result
+                    ));
+                    return;
+                }
                 setResults(prev => prev.map(result =>
                     result.id === newResultId ? {
                         ...result,
@@ -213,6 +260,7 @@ export default function Home() {
             for (let i = 0; i < Math.min(MAX_CONCURRENT, sourceImages.length); i++) {
                 const worker = (async () => {
                     while (currentIndex < sourceImages.length) {
+                        if (signal.aborted) break;
                         const index = currentIndex++;
                         if (index < sourceImages.length) {
                             await processImage(sourceImages[index], index);
@@ -225,7 +273,10 @@ export default function Home() {
             // Wait for all workers to complete
             await Promise.all(workers);
         } finally {
-            setIsEnhancing(false);
+            if (!signal.aborted) {
+                setIsEnhancing(false);
+                abortControllerRef.current = null;
+            }
         }
     };
 
@@ -253,11 +304,28 @@ export default function Home() {
         ));
     };
 
+    const handleReset = () => {
+        if (window.confirm('Start fresh? This will clear all uploaded photos and results.')) {
+            setOriginals([]);
+            setResults([]);
+            setResultCounter(0);
+            setActiveTabLabel('Original');
+            setIsEnhancing(false);
+        }
+    };
+
     return (
         <main style={{ minHeight: '100vh', paddingBottom: '2rem' }}>
-            <Header onOpenPresets={() => setShowPresetManager(true)} />
+            <Header
+                onOpenPresets={() => setShowPresetManager(true)}
+            />
             <div className="container">
-                <UploadZone onUploadComplete={handleUploadComplete} />
+                <UploadZone
+                    onUploadComplete={handleUploadComplete}
+                    onReset={handleReset}
+                    onStop={handleStop}
+                    isProcessing={isEnhancing}
+                />
                 <ControlPanel
                     onEnhance={handleEnhance}
                     disabled={originals.length === 0}
@@ -266,6 +334,7 @@ export default function Home() {
                     isEnhancing={isEnhancing}
                     onOpenPresetManager={() => setShowPresetManager(true)}
                     presetRefreshTrigger={presetRefreshTrigger}
+                    onPresetSaved={() => setPresetRefreshTrigger(prev => prev + 1)}
                 />
                 <Gallery
                     originals={originals}

@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 
 export default function Gallery({ originals, results, onUpdateResult, onActiveTabChange }) {
     const [activeTab, setActiveTab] = useState('original');
@@ -15,6 +17,8 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
         if (results.length > 0) {
             const newestResult = results[results.length - 1];
             setActiveTab(`result-${newestResult.id}`);
+        } else if (results.length === 0 && activeTab !== 'original') {
+            setActiveTab('original');
         }
     }, [results.length]);
 
@@ -39,13 +43,14 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
     ];
 
     const handleDownload = (imagePath, filename) => {
-        // Simple client-side download anchor
-        const link = document.createElement('a');
-        link.href = imagePath;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        // Use file-saver for robust saving
+        // If imagePath is relative, make it absolute for fetch
+        let url = imagePath;
+        if (url && url.startsWith('/')) {
+            url = `${window.location.origin}${url}`;
+        }
+
+        saveAs(url, filename);
     };
 
     const handleDownloadAll = async (images, prefix = '') => {
@@ -54,19 +59,16 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
         // Prepare file list with ABSOLUTE URLs
         const filesToDownload = images.map(img => {
             let url = img.enhancedPath || img.path;
-
-            // If relative URL (starts with /), make it absolute for Electron/Fetch
             if (url && url.startsWith('/')) {
                 url = `${window.location.origin}${url}`;
             }
-
             return {
                 url: url,
                 filename: prefix ? `${prefix}-${img.displayName || img.originalName}` : (img.displayName || img.originalName)
             };
         });
 
-        // ELECTRON: Native Bulk Save
+        // ELECTRON: Native Bulk Save (Still prefer native if available)
         if (window.electron) {
             try {
                 const result = await window.electron.saveFiles(filesToDownload);
@@ -84,18 +86,38 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
             return;
         }
 
-        // WEB: Delayed Loop
-        console.log('Starting bulk download (Web Mode)...');
-        for (let i = 0; i < filesToDownload.length; i++) {
-            const file = filesToDownload[i];
+        // WEB: Zip Download using JSZip
+        console.log('Starting bulk download (Web Mode - Zip)...');
+        try {
+            const zip = new JSZip();
+            const folder = zip.folder("photos");
 
-            setTimeout(() => {
-                handleDownload(file.url, file.filename);
-                // When finished last one
-                if (i === filesToDownload.length - 1) {
-                    setIsDownloading(false);
+            // Fetch all images
+            // Use Promise.all to fetch in parallel
+            const promises = filesToDownload.map(async (file) => {
+                try {
+                    const response = await fetch(file.url);
+                    if (!response.ok) throw new Error(`Failed to fetch ${file.url}`);
+                    const blob = await response.blob();
+                    folder.file(file.filename, blob);
+                } catch (err) {
+                    console.error('Failed to download file for zip:', file.filename, err);
                 }
-            }, i * 500); // 500ms interval to prevent blocking
+            });
+
+            await Promise.all(promises);
+
+            // Generate zip
+            const content = await zip.generateAsync({ type: "blob" });
+
+            const zipName = prefix ? `${prefix}-photos.zip` : `photos-${Date.now()}.zip`;
+            saveAs(content, zipName);
+
+        } catch (error) {
+            console.error('Zip creation failed:', error);
+            alert('Failed to package photos for download.');
+        } finally {
+            setIsDownloading(false);
         }
     };
 
@@ -231,10 +253,12 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                     style={{ position: 'relative', aspectRatio: '4/3', background: '#000', cursor: 'pointer' }}
                                     onClick={() => openLightbox(img.path, img.displayName || img.originalName, null)}
                                 >
+                                    {console.log('Rendering Image:', img.originalName, img.path)}
                                     <img
                                         src={img.path}
                                         alt={img.originalName}
                                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                        onError={(e) => console.error('Original Image Load Failed:', img.path, e)}
                                     />
                                 </div>
                                 <div style={{ padding: '1rem' }}>
@@ -313,6 +337,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                             src={img.enhancedPath || img.originalPath}
                                             alt={img.originalName}
                                             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                            onError={(e) => console.error('Result Image Load Failed:', img.enhancedPath || img.originalPath, e)}
                                         />
 
                                         <div style={{

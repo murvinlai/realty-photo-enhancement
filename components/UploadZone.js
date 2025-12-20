@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 
-export default function UploadZone({ onUploadComplete }) {
+export default function UploadZone({ onUploadComplete, onReset, onStop, isProcessing }) {
     const [isDragging, setIsDragging] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef(null);
@@ -105,18 +105,83 @@ export default function UploadZone({ onUploadComplete }) {
                 textAlign: 'center',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
-                backgroundColor: isDragging ? 'rgba(59, 130, 246, 0.1)' : 'transparent'
+                backgroundColor: isDragging ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                position: 'relative'
             }}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            onDrop={handleDrop}
             onClick={handleClick}
         >
+            {onReset && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onReset();
+                    }}
+                    title="Start Over (Clear All Photos)"
+                    style={{
+                        position: 'absolute',
+                        top: '1rem',
+                        right: '1rem',
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--secondary)',
+                        cursor: 'pointer',
+                        padding: '0.5rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        fontSize: '0.8rem',
+                        zIndex: 10
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.color = 'var(--error)'}
+                    onMouseLeave={(e) => e.currentTarget.style.color = 'var(--secondary)'}
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                        <path d="M3 3v5h5" />
+                    </svg>
+                    Start Over
+                </button>
+            )}
+
+            {isProcessing && onStop && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onStop();
+                    }}
+                    title="Stop Processing"
+                    style={{
+                        position: 'absolute',
+                        top: '1rem',
+                        right: onReset ? '8rem' : '1rem', // Adjust position based on Start Over existence
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--error)',
+                        cursor: 'pointer',
+                        padding: '0.5rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        fontSize: '0.8rem',
+                        zIndex: 10
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.fontWeight = 'bold'}
+                    onMouseLeave={(e) => e.currentTarget.style.fontWeight = 'normal'}
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    </svg>
+                    Stop
+                </button>
+            )}
+
             <input
                 type="file"
                 multiple
-                accept="image/*"
+                accept="image/*,.heic,.heif"
                 onChange={handleFileSelect}
                 ref={fileInputRef}
                 style={{ display: 'none' }}
