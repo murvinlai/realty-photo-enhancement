@@ -100,7 +100,7 @@ export default function Home() {
                 id: `orig-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 path: file.path,
                 originalName: file.originalName, // Keep true original name for reference
-                displayName: displayOriginalName, // Use updated name for UI
+                displayName: displayOriginalName.trim(), // Use updated name for UI
                 uploadedAt: Date.now()
             };
         });
@@ -154,7 +154,7 @@ export default function Home() {
             if (result.id !== resultId) return result;
 
             const newImages = result.images.map((img, index) => {
-                let currentName = img.displayName || img.originalName;
+                let currentName = (img.displayName || img.originalName).trim();
                 const ext = currentName.match(/\.[^.]+$/)?.[0] || '';
                 const baseName = currentName.replace(/\.[^.]+$/, '');
 
@@ -172,13 +172,13 @@ export default function Home() {
                     }
                 } else if (mode === 'format') {
                     const nameStr = params.customFormat || 'Untitled';
-                    const numStr = String(params.startNumber + index); // 1-indexed based on array position + offset
+                    const numStr = String(params.startNumber + index);
                     newBaseName = `${nameStr}${numStr}`;
                 }
 
                 return {
                     ...img,
-                    displayName: `${newBaseName}${ext}`
+                    displayName: `${newBaseName.trim()}${ext.trim()}`
                 };
             });
 
@@ -229,7 +229,7 @@ export default function Home() {
         if (!activeTabLabel || activeTabLabel === 'Original') {
             // Check if there are selected images
             const pool = (selectedImages.size > 0)
-                ? originals.filter(img => selectedImages.has(img.path))
+                ? originals.filter(img => selectedImages.has(img.id))
                 : originals;
 
             sourceImages = pool.map(orig => ({
@@ -238,42 +238,23 @@ export default function Home() {
             }));
             sourceLabel = 'Original';
         } else {
-            // Parse "Version X" to find the result
-            // Assuming tabs are named "Version 1", "Version 2" etc matching result.id or index
-            // Let's check how Gallery names them. If Gallery uses "Result {id}", we match that.
-            // If Gallery uses "Version {i+1}", we match index.
-
-            // For now, let's look for a result whose computed label might match, 
-            // OR finding the result with the highest ID if "Latest" is desired? 
-            // The user said "Tab i am focus on".
-
-            // Search in results. We need to know how Gallery constructs the label.
-            // Based on typical behavior:
-            const match = activeTabLabel.match(/Version (\d+)/i);
+            // Parse "Version X" or "Result X" to find the result
+            const match = activeTabLabel.match(/(Version|Result) (\d+)/i);
             if (match) {
-                const versionId = parseInt(match[1], 10);
-                const prevResult = results.find(r => r.id === versionId);
+                const resId = parseInt(match[2], 10);
+                const prevResult = results.find(r => r.id === resId);
 
                 if (prevResult) {
-                    sourceImages = prevResult.images.map(img => ({
-                        path: img.enhancedPath || img.originalPath, // Use generic 'path' for processing
+                    // Filter by selection if active
+                    const pool = (selectedImages.size > 0)
+                        ? prevResult.images.filter(img => selectedImages.has(img.id))
+                        : prevResult.images;
+
+                    sourceImages = pool.map(img => ({
+                        path: img.enhancedPath || img.originalPath || img.path,
                         originalName: img.originalName
                     }));
                     sourceLabel = activeTabLabel;
-                }
-            } else if (activeTabLabel.includes('Result')) {
-                // Fallback if named Result X
-                const match = activeTabLabel.match(/Result (\d+)/i);
-                if (match) {
-                    const resId = parseInt(match[1], 10);
-                    const prevResult = results.find(r => r.id === resId);
-                    if (prevResult) {
-                        sourceImages = prevResult.images.map(img => ({
-                            path: img.enhancedPath,
-                            originalName: img.originalName
-                        }));
-                        sourceLabel = activeTabLabel;
-                    }
                 }
             }
         }
@@ -525,9 +506,9 @@ export default function Home() {
                 }
             });
         } else {
-            const match = activeTabLabel.match(/Result (\d+)/i);
+            const match = activeTabLabel.match(/(Version|Result) (\d+)/i);
             if (match) {
-                const resId = parseInt(match[1]);
+                const resId = parseInt(match[2]);
                 const activeRes = results.find(r => r.id === resId);
                 if (activeRes) {
                     activeRes.images.forEach(img => {

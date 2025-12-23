@@ -50,7 +50,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
         // If imagePath is relative, make it absolute for fetch
         let url = imagePath;
         if (url && url.startsWith('/')) {
-            url = `${window.location.origin}${url} `;
+            url = `${window.location.origin}${url}`;
         }
 
         saveAs(url, filename);
@@ -63,11 +63,11 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
         const filesToDownload = images.map(img => {
             let url = img.enhancedPath || img.path;
             if (url && url.startsWith('/')) {
-                url = `${window.location.origin}${url} `;
+                url = `${window.location.origin}${url}`;
             }
             return {
                 url: url,
-                filename: prefix ? `${prefix} -${img.displayName || img.originalName} ` : (img.displayName || img.originalName)
+                filename: prefix ? `${prefix} - ${img.displayName || img.originalName}` : (img.displayName || img.originalName)
             };
         });
 
@@ -100,7 +100,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
             const promises = filesToDownload.map(async (file) => {
                 try {
                     const response = await fetch(file.url);
-                    if (!response.ok) throw new Error(`Failed to fetch ${file.url} `);
+                    if (!response.ok) throw new Error(`Failed to fetch ${file.url}`);
                     const blob = await response.blob();
                     folder.file(file.filename, blob);
                 } catch (err) {
@@ -113,7 +113,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
             // Generate zip
             const content = await zip.generateAsync({ type: "blob" });
 
-            const zipName = prefix ? `${prefix} -photos.zip` : `photos - ${Date.now()}.zip`;
+            const zipName = prefix ? `${prefix}-photos.zip` : `photos-${Date.now()}.zip`;
             saveAs(content, zipName);
 
         } catch (error) {
