@@ -8,6 +8,7 @@ import UploadZone from '@/components/UploadZone';
 import ControlPanel from '@/components/ControlPanel';
 import Gallery from '@/components/Gallery';
 import PresetManagementModal from '@/components/PresetManagementModal';
+import EditorModal from '@/components/EditorModal';
 
 export default function Home() {
     const { user, loading } = useAuth();
@@ -21,6 +22,8 @@ export default function Home() {
     const [presetRefreshTrigger, setPresetRefreshTrigger] = useState(0);
     const [selectedImages, setSelectedImages] = useState(new Set());
     const [sessionId, setSessionId] = useState('');
+    const [showEditor, setShowEditor] = useState(false);
+    const [editStates, setEditStates] = useState({}); // { [imageId]: { brightness: 0, ... } }
     const abortControllerRef = useRef(null);
 
     const generateSessionId = () => {
@@ -94,6 +97,7 @@ export default function Home() {
             }
 
             return {
+                id: `orig-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 path: file.path,
                 originalName: file.originalName, // Keep true original name for reference
                 displayName: displayOriginalName, // Use updated name for UI
@@ -129,7 +133,7 @@ export default function Home() {
         }
 
         // 1. Remove from local state
-        setOriginals(prev => prev.filter(img => !selectedImages.has(img.path)));
+        setOriginals(prev => prev.filter(img => !selectedImages.has(img.id)));
 
         // 2. Clear selection
         setSelectedImages(new Set());
@@ -289,6 +293,7 @@ export default function Home() {
             instructions,
             source: sourceLabel, // Track source for UI/Debug
             images: sourceImages.map(src => ({
+                id: `res-${newResultId}-${Math.random().toString(36).substr(2, 9)}`,
                 originalPath: src.path, // This enhanced path becomes the "original" for the new generation
                 originalName: src.originalName,
                 status: 'pending',
@@ -434,11 +439,109 @@ export default function Home() {
             setResultCounter(0);
             setActiveTabLabel('Original');
             setIsEnhancing(false);
-            setActiveTabLabel('Original');
-            setIsEnhancing(false);
             setSelectedImages(new Set());
             setSessionId(generateSessionId()); // Reset Session ID with new timestamp
+            setEditStates({}); // Clear edit history
         }
+    };
+
+    const handleEditSave = async (newEdits) => {
+        // newEdits: { [imageId]: { brightness: 10, ... } }
+        setEditStates(prev => ({ ...prev, ...newEdits }));
+
+        // Identify images to process (those in newEdits)
+        const imagesToProcess = Object.keys(newEdits);
+
+        // We need to find the files in originals or results based on ID.
+        // Helper to find image object
+        const findImageById = (id) => {
+            const orig = originals.find(o => o.id === id);
+            if (orig) return { img: orig, type: 'original' };
+
+            for (const res of results) {
+                const img = res.images.find(i => i.id === id);
+                if (img) return { img, type: 'result', resId: res.id };
+            }
+            return null;
+        };
+
+        setIsEnhancing(true);
+
+        try {
+            for (const imageId of imagesToProcess) {
+                const found = findImageById(imageId);
+                if (!found) continue;
+
+                const adjustments = newEdits[imageId];
+                // Only process if adjustments exist and are not all zero (optional optimization)
+
+                const response = await fetch('/api/edit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        imagePath: found.img.path,
+                        adjustments,
+                        sessionId,
+                        imageId: found.img.id
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    // Update the image path in state to force reload
+                    // We append a query param to bust cache if path is same, or use new path
+                    const newPath = `${data.editedPath}?t=${Date.now()}`;
+
+                    if (found.type === 'original') {
+                        setOriginals(prev => prev.map(o => o.id === imageId ? { ...o, path: newPath } : o));
+                    } else {
+                        handleUpdateResult(found.resId, found.img.index, { path: newPath }); // Need index?
+                        // handleUpdateResult expects index, but we have ID. 
+                        // Let's manually update results state for robustness
+                        setResults(prev => prev.map(res =>
+                            res.id === found.resId ? {
+                                ...res,
+                                images: res.images.map(img => img.id === imageId ? { ...img, path: newPath } : img)
+                            } : res
+                        ));
+                    }
+                } else {
+                    console.error('Edit failed for', imageId);
+                }
+            }
+        } catch (error) {
+            console.error('Batch edit error', error);
+            alert('Failed to save edits');
+        } finally {
+            setIsEnhancing(false);
+        }
+    };
+    const getSelectedImageObjects = () => {
+        const selectedObjs = [];
+        if (activeTabLabel === 'Original') {
+            originals.forEach(o => {
+                if (selectedImages.has(o.id)) {
+                    selectedObjs.push(o);
+                }
+            });
+        } else {
+            const match = activeTabLabel.match(/Result (\d+)/i);
+            if (match) {
+                const resId = parseInt(match[1]);
+                const activeRes = results.find(r => r.id === resId);
+                if (activeRes) {
+                    activeRes.images.forEach(img => {
+                        if (selectedImages.has(img.id)) {
+                            selectedObjs.push({
+                                ...img,
+                                path: img.enhancedPath || img.originalPath
+                            });
+                        }
+                    });
+                }
+            }
+        }
+        return selectedObjs;
     };
 
 
@@ -477,8 +580,21 @@ export default function Home() {
                     onDeselectAll={handleDeselectAll}
                     onDeleteSelected={handleDeleteSelected}
                     onRename={handleRename}
+
+                    onEdit={() => setShowEditor(true)}
                 />
             </div>
+
+            {/* Manual Editor Modal */}
+            {showEditor && (
+                <EditorModal
+                    isOpen={true}
+                    onClose={() => setShowEditor(false)}
+                    selectedImages={getSelectedImageObjects()}
+                    onSave={handleEditSave}
+                    savedEdits={editStates}
+                />
+            )}
 
             {/* Global Preset Manager */}
             {/* Dynamically imported or just rendered conditionally */}

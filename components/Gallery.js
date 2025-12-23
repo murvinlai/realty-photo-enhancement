@@ -6,7 +6,7 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import RenameModal from './RenameModal';
 
-export default function Gallery({ originals, results, onUpdateResult, onActiveTabChange, selectedImages, onToggleSelection, onDeleteSelected, onDeselectAll, onRename }) {
+export default function Gallery({ originals, results, onUpdateResult, onActiveTabChange, selectedImages, onToggleSelection, onDeleteSelected, onDeselectAll, onRename, onEdit }) {
     const [activeTab, setActiveTab] = useState('original');
     const [lightboxImage, setLightboxImage] = useState(null);
     const [lightboxInstructions, setLightboxInstructions] = useState('');
@@ -19,7 +19,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
     useEffect(() => {
         if (results.length > 0) {
             const newestResult = results[results.length - 1];
-            setActiveTab(`result - ${newestResult.id} `);
+            setActiveTab(`result-${newestResult.id}`);
         } else if (results.length === 0 && activeTab !== 'original') {
             setActiveTab('original');
         }
@@ -42,7 +42,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
 
     const tabs = [
         { id: 'original', label: 'Original' },
-        ...results.map(result => ({ id: `result - ${result.id} `, label: `Result ${result.id} ` }))
+        ...results.map(result => ({ id: `result-${result.id}`, label: `Result ${result.id}` }))
     ];
 
     const handleDownload = (imagePath, filename) => {
@@ -227,7 +227,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
             {activeTab === 'original' && (
                 <>
                     <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        {selectedImages && (
+                        {selectedImages && selectedImages.size > 0 && (
                             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                 <button
                                     onClick={onDeselectAll}
@@ -265,6 +265,28 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                         <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />
                                     </svg>
                                     Delete Selected ({selectedImages.size})
+                                </button>
+                                <button
+                                    onClick={onEdit}
+                                    style={{
+                                        padding: '0.5rem 1rem',
+                                        background: 'var(--primary)',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: 'var(--radius)',
+                                        cursor: 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem'
+                                    }}
+                                >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                    </svg>
+                                    Edit
                                 </button>
                             </div>
                         )}
@@ -304,36 +326,33 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                         onError={(e) => console.error('Original Image Load Failed:', img.path, e)}
                                     />
-                                    {/* Selection Checkbox */}
-                                    {onToggleSelection && selectedImages && (
-                                        <div
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                onToggleSelection(img.path);
-                                            }}
-                                            style={{
-                                                position: 'absolute',
-                                                top: '0.5rem',
-                                                left: '0.5rem',
-                                                width: '24px',
-                                                height: '24px',
-                                                borderRadius: '50%',
-                                                background: selectedImages.has(img.path) ? 'var(--primary)' : 'rgba(0,0,0,0.5)',
-                                                border: '2px solid white',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                cursor: 'pointer',
-                                                zIndex: 10
-                                            }}
-                                        >
-                                            {selectedImages.has(img.path) && (
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                                    <polyline points="20 6 9 17 4 12"></polyline>
-                                                </svg>
-                                            )}
-                                        </div>
-                                    )}
+                                    <div
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onToggleSelection(img.id);
+                                        }}
+                                        style={{
+                                            position: 'absolute',
+                                            top: '0.5rem',
+                                            left: '0.5rem',
+                                            width: '24px',
+                                            height: '24px',
+                                            borderRadius: '50%',
+                                            background: selectedImages.has(img.id) ? 'var(--primary)' : 'rgba(0,0,0,0.5)',
+                                            border: '2px solid white',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            cursor: 'pointer',
+                                            zIndex: 10
+                                        }}
+                                    >
+                                        {selectedImages.has(img.id) && (
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                <polyline points="20 6 9 17 4 12"></polyline>
+                                            </svg>
+                                        )}
+                                    </div>
                                 </div>
                                 <div style={{ padding: '1rem' }}>
                                     <p style={{
@@ -369,42 +388,109 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                 </>
             )}
 
-            {/* Result Tabs */}
             {results.map(result => (
-                activeTab === `result - ${result.id} ` && (
+                activeTab === `result-${result.id}` && (
                     <div key={result.id}>
-                        <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                            <button
-                                onClick={() => setShowRenameModal(true)}
-                                style={{
-                                    padding: '0.5rem 1rem',
-                                    background: 'var(--secondary)',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: 'var(--radius)',
-                                    cursor: 'pointer',
-                                    fontSize: '0.9rem',
-                                    fontWeight: '600'
-                                }}
-                            >
-                                Rename
-                            </button>
-                            <button
-                                onClick={() => handleDownloadAll(result.images, `result - ${result.id} `)}
-                                disabled={isDownloading}
-                                style={{
-                                    padding: '0.75rem 1.5rem',
-                                    background: isDownloading ? 'var(--secondary)' : 'var(--accent)',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: 'var(--radius)',
-                                    cursor: isDownloading ? 'wait' : 'pointer',
-                                    fontSize: '0.9rem',
-                                    fontWeight: '600'
-                                }}
-                            >
-                                {isDownloading ? 'Downloading...' : `📥 Download All(${result.images.filter(img => img.status === 'done').length} / ${result.images.length})`}
-                            </button>
+                        <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                {selectedImages && selectedImages.size > 0 && (
+                                    <>
+                                        <button
+                                            onClick={onDeselectAll}
+                                            style={{
+                                                padding: '0.5rem 1rem',
+                                                background: 'rgba(255,255,255,0.1)',
+                                                color: 'var(--secondary)',
+                                                border: '1px solid var(--border)',
+                                                borderRadius: 'var(--radius)',
+                                                cursor: 'pointer',
+                                                fontSize: '0.9rem',
+                                                fontWeight: '600'
+                                            }}
+                                        >
+                                            Unselect All
+                                        </button>
+                                        <button
+                                            onClick={onDeleteSelected}
+                                            disabled={selectedImages.size === 0}
+                                            style={{
+                                                padding: '0.5rem 1rem',
+                                                background: selectedImages.size > 0 ? 'var(--error)' : 'rgba(255,255,255,0.1)',
+                                                color: selectedImages.size > 0 ? 'white' : 'var(--secondary)',
+                                                border: 'none',
+                                                borderRadius: 'var(--radius)',
+                                                cursor: selectedImages.size > 0 ? 'pointer' : 'not-allowed',
+                                                fontSize: '0.9rem',
+                                                fontWeight: '600',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.5rem'
+                                            }}
+                                        >
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />
+                                            </svg>
+                                            Delete ({selectedImages.size})
+                                        </button>
+                                        <button
+                                            onClick={onEdit}
+                                            style={{
+                                                padding: '0.5rem 1rem',
+                                                background: 'var(--primary)',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: 'var(--radius)',
+                                                cursor: 'pointer',
+                                                fontSize: '0.9rem',
+                                                fontWeight: '600',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.5rem'
+                                            }}
+                                        >
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                            </svg>
+                                            Edit
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button
+                                    onClick={() => setShowRenameModal(true)}
+                                    style={{
+                                        padding: '0.5rem 1rem',
+                                        background: 'var(--secondary)',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: 'var(--radius)',
+                                        cursor: 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600'
+                                    }}
+                                >
+                                    Rename
+                                </button>
+                                <button
+                                    onClick={() => handleDownloadAll(result.images, `Result ${result.id}`)}
+                                    disabled={isDownloading}
+                                    style={{
+                                        padding: '0.75rem 1.5rem',
+                                        background: isDownloading ? 'var(--secondary)' : 'var(--accent)',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: 'var(--radius)',
+                                        cursor: isDownloading ? 'wait' : 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600'
+                                    }}
+                                >
+                                    {isDownloading ? 'Downloading...' : `📥 Download All(${result.images.filter(img => img.status === 'done').length}/${result.images.length})`}
+                                </button>
+                            </div>
                         </div>
 
                         <div style={{
@@ -428,6 +514,36 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                             onError={(e) => console.error('Result Image Load Failed:', img.enhancedPath || img.originalPath, e)}
                                         />
+
+                                        {onToggleSelection && selectedImages && (
+                                            <div
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onToggleSelection(img.id);
+                                                }}
+                                                style={{
+                                                    position: 'absolute',
+                                                    top: '0.5rem',
+                                                    left: '0.5rem',
+                                                    width: '24px',
+                                                    height: '24px',
+                                                    borderRadius: '50%',
+                                                    background: selectedImages.has(img.id) ? 'var(--primary)' : 'rgba(0,0,0,0.5)',
+                                                    border: '2px solid white',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    cursor: 'pointer',
+                                                    zIndex: 10
+                                                }}
+                                            >
+                                                {selectedImages.has(img.id) && (
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                        <polyline points="20 6 9 17 4 12"></polyline>
+                                                    </svg>
+                                                )}
+                                            </div>
+                                        )}
 
                                         <div style={{
                                             position: 'absolute',
