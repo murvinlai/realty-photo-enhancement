@@ -15,8 +15,9 @@ export async function POST(request) {
         const filename = path.basename(imagePath);
         const ext = path.extname(filename);
         const nameWithoutExt = path.basename(filename, ext);
-        const timestamp = Date.now();
-        const outputFilename = `enhanced-${timestamp}-${nameWithoutExt}.png`; // Always PNG for generative output
+
+        // timestamp removed from filename as folder is unique per session
+        const outputFilename = `enhanced-${nameWithoutExt}.png`; // Always PNG for generative output
 
         // Handle path resolution based on environment
         const userDataPath = process.env.USER_DATA_PATH;

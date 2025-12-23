@@ -23,6 +23,17 @@ export default function Home() {
     const [sessionId, setSessionId] = useState('');
     const abortControllerRef = useRef(null);
 
+    const generateSessionId = () => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hour = String(now.getHours()).padStart(2, '0');
+        const minute = String(now.getMinutes()).padStart(2, '0');
+        const timestamp = `${year}${month}${day}${hour}${minute}`;
+        return `${timestamp}-${crypto.randomUUID()}`;
+    };
+
     // Redirect to login if not authenticated
     useEffect(() => {
         if (!loading && !user) {
@@ -32,7 +43,7 @@ export default function Home() {
 
     // Initialize Session ID
     useEffect(() => {
-        setSessionId(crypto.randomUUID());
+        setSessionId(generateSessionId());
     }, []);
 
     // Clear selection when tab changes
@@ -426,7 +437,7 @@ export default function Home() {
             setActiveTabLabel('Original');
             setIsEnhancing(false);
             setSelectedImages(new Set());
-            setSessionId(crypto.randomUUID()); // Reset Session ID
+            setSessionId(generateSessionId()); // Reset Session ID with new timestamp
         }
     };
 

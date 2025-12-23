@@ -67,8 +67,9 @@ export async function POST(request) {
                 }
             }
 
-            // Generate unique filename
-            const uniqueFilename = `${Date.now()}-${filename}`;
+            // Generate unique filename (Session isolation handles conflicts now)
+            // Use original filename (sanitized)
+            const uniqueFilename = filename;
             const filepath = path.join(uploadDir, uniqueFilename);
 
             await writeFile(filepath, buffer);
