@@ -7,6 +7,7 @@ export async function POST(request) {
     try {
         const formData = await request.formData();
         const files = formData.getAll('files');
+        const sessionId = formData.get('sessionId');
 
         if (!files || files.length === 0) {
             return NextResponse.json({ error: 'No files uploaded' }, { status: 400 });
@@ -18,11 +19,11 @@ export async function POST(request) {
         let publicUrlPrefix;
 
         if (userDataPath) {
-            uploadDir = path.join(userDataPath, 'uploads');
-            publicUrlPrefix = '/api/media/uploads';
+            uploadDir = sessionId ? path.join(userDataPath, 'uploads', sessionId) : path.join(userDataPath, 'uploads');
+            publicUrlPrefix = sessionId ? `/api/media/uploads/${sessionId}` : '/api/media/uploads';
         } else {
-            uploadDir = path.join(process.cwd(), 'public/uploads');
-            publicUrlPrefix = '/uploads';
+            uploadDir = sessionId ? path.join(process.cwd(), 'public/uploads', sessionId) : path.join(process.cwd(), 'public/uploads');
+            publicUrlPrefix = sessionId ? `/uploads/${sessionId}` : '/uploads';
         }
 
         // Ensure directory exists

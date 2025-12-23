@@ -18,7 +18,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
     return (
         <html lang="en">
-            <body className={`${inter.variable} ${outfit.variable} antialiased`}>
+            <body className={`${inter.variable} ${outfit.variable} antialiased`} suppressHydrationWarning={true}>
                 <AuthProvider> {/* AuthProvider is still here, as the instruction was to wrap children with NotificationProvider, not replace AuthProvider. The provided snippet was a bit ambiguous on this. */}
                     <NotificationProvider>
                         {children}

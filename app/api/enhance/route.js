@@ -6,7 +6,7 @@ import sharp from 'sharp';
 
 export async function POST(request) {
     try {
-        const { imagePath, instructions } = await request.json();
+        const { imagePath, instructions, sessionId } = await request.json();
 
         if (!imagePath || !instructions) {
             return NextResponse.json({ error: 'Missing imagePath or instructions' }, { status: 400 });
@@ -42,19 +42,25 @@ export async function POST(request) {
             }
 
             // Output Config
-            const processedDir = path.join(userDataPath, 'processed');
+            const processedDir = sessionId ? path.join(userDataPath, 'processed', sessionId) : path.join(userDataPath, 'processed');
             // Ensure processed dir exists - we must do this as we can't assume it exists
             const { mkdir } = require('fs/promises');
             await mkdir(processedDir, { recursive: true });
 
             absoluteOutputPath = path.join(processedDir, outputFilename);
-            publicOutputPath = `/api/media/processed/${outputFilename}`;
+            publicOutputPath = sessionId ? `/api/media/processed/${sessionId}/${outputFilename}` : `/api/media/processed/${outputFilename}`;
 
         } else {
             // Dev/Standard: Use public/
             absoluteInputPath = path.join(process.cwd(), 'public', imagePath);
-            absoluteOutputPath = path.join(process.cwd(), 'public/processed', outputFilename);
-            publicOutputPath = `/processed/${outputFilename}`;
+
+            const processedDir = sessionId ? path.join(process.cwd(), 'public/processed', sessionId) : path.join(process.cwd(), 'public/processed');
+            // Ensure local dev processed dir exists too
+            const { mkdir } = require('fs/promises');
+            await mkdir(processedDir, { recursive: true });
+
+            absoluteOutputPath = path.join(processedDir, outputFilename);
+            publicOutputPath = sessionId ? `/processed/${sessionId}/${outputFilename}` : `/processed/${outputFilename}`;
         }
 
         // 1. Read input image

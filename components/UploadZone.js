@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 
-export default function UploadZone({ onUploadComplete, onReset, onStop, isProcessing }) {
+export default function UploadZone({ onUploadComplete, onReset, onStop, isProcessing, sessionId }) {
     const [isDragging, setIsDragging] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef(null);
@@ -38,6 +38,10 @@ export default function UploadZone({ onUploadComplete, onReset, onStop, isProces
 
         for (let i = 0; i < fileList.length; i++) {
             formData.append('files', fileList[i]);
+        }
+
+        if (sessionId) {
+            formData.append('sessionId', sessionId);
         }
 
         try {

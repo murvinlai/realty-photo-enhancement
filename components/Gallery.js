@@ -1,22 +1,25 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
+import RenameModal from './RenameModal';
 
-export default function Gallery({ originals, results, onUpdateResult, onActiveTabChange }) {
+export default function Gallery({ originals, results, onUpdateResult, onActiveTabChange, selectedImages, onToggleSelection, onDeleteSelected, onDeselectAll, onRename }) {
     const [activeTab, setActiveTab] = useState('original');
     const [lightboxImage, setLightboxImage] = useState(null);
     const [lightboxInstructions, setLightboxInstructions] = useState('');
     const [isEnhancing, setIsEnhancing] = useState(false);
     const [userClosedLightbox, setUserClosedLightbox] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
+    const [showRenameModal, setShowRenameModal] = useState(false);
 
     // Auto-switch to newest result tab when a new result is created
     useEffect(() => {
         if (results.length > 0) {
             const newestResult = results[results.length - 1];
-            setActiveTab(`result-${newestResult.id}`);
+            setActiveTab(`result - ${newestResult.id} `);
         } else if (results.length === 0 && activeTab !== 'original') {
             setActiveTab('original');
         }
@@ -29,7 +32,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
             let label = 'Original';
             if (activeTab.startsWith('result-')) {
                 const resultId = parseInt(activeTab.replace('result-', ''));
-                label = `Result ${resultId}`;
+                label = `Result ${resultId} `;
             }
             onActiveTabChange(label);
         }
@@ -39,7 +42,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
 
     const tabs = [
         { id: 'original', label: 'Original' },
-        ...results.map(result => ({ id: `result-${result.id}`, label: `Result ${result.id}` }))
+        ...results.map(result => ({ id: `result - ${result.id} `, label: `Result ${result.id} ` }))
     ];
 
     const handleDownload = (imagePath, filename) => {
@@ -47,7 +50,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
         // If imagePath is relative, make it absolute for fetch
         let url = imagePath;
         if (url && url.startsWith('/')) {
-            url = `${window.location.origin}${url}`;
+            url = `${window.location.origin}${url} `;
         }
 
         saveAs(url, filename);
@@ -60,11 +63,11 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
         const filesToDownload = images.map(img => {
             let url = img.enhancedPath || img.path;
             if (url && url.startsWith('/')) {
-                url = `${window.location.origin}${url}`;
+                url = `${window.location.origin}${url} `;
             }
             return {
                 url: url,
-                filename: prefix ? `${prefix}-${img.displayName || img.originalName}` : (img.displayName || img.originalName)
+                filename: prefix ? `${prefix} -${img.displayName || img.originalName} ` : (img.displayName || img.originalName)
             };
         });
 
@@ -97,7 +100,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
             const promises = filesToDownload.map(async (file) => {
                 try {
                     const response = await fetch(file.url);
-                    if (!response.ok) throw new Error(`Failed to fetch ${file.url}`);
+                    if (!response.ok) throw new Error(`Failed to fetch ${file.url} `);
                     const blob = await response.blob();
                     folder.file(file.filename, blob);
                 } catch (err) {
@@ -110,7 +113,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
             // Generate zip
             const content = await zip.generateAsync({ type: "blob" });
 
-            const zipName = prefix ? `${prefix}-photos.zip` : `photos-${Date.now()}.zip`;
+            const zipName = prefix ? `${prefix} -photos.zip` : `photos - ${Date.now()}.zip`;
             saveAs(content, zipName);
 
         } catch (error) {
@@ -175,14 +178,14 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                     status: 'error',
                     error: data.error || 'Failed'
                 });
-                alert(`Enhancement failed: ${data.error || 'Unknown error'}`);
+                alert(`Enhancement failed: ${data.error || 'Unknown error'} `);
             }
         } catch (error) {
             onUpdateResult(resultId, imageIndex, {
                 status: 'error',
                 error: 'Network error'
             });
-            alert(`Network error: ${error.message}`);
+            alert(`Network error: ${error.message} `);
         } finally {
             setIsEnhancing(false);
         }
@@ -223,7 +226,48 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
             {/* Original Tab */}
             {activeTab === 'original' && (
                 <>
-                    <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
+                    <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        {selectedImages && (
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                <button
+                                    onClick={onDeselectAll}
+                                    style={{
+                                        padding: '0.5rem 1rem',
+                                        background: 'rgba(255,255,255,0.1)',
+                                        color: 'var(--secondary)',
+                                        border: '1px solid var(--border)',
+                                        borderRadius: 'var(--radius)',
+                                        cursor: 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600'
+                                    }}
+                                >
+                                    Unselect All
+                                </button>
+                                <button
+                                    onClick={onDeleteSelected}
+                                    disabled={selectedImages.size === 0}
+                                    style={{
+                                        padding: '0.5rem 1rem',
+                                        background: selectedImages.size > 0 ? 'var(--error)' : 'rgba(255,255,255,0.1)',
+                                        color: selectedImages.size > 0 ? 'white' : 'var(--secondary)',
+                                        border: 'none',
+                                        borderRadius: 'var(--radius)',
+                                        cursor: selectedImages.size > 0 ? 'pointer' : 'not-allowed',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem'
+                                    }}
+                                >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />
+                                    </svg>
+                                    Delete Selected ({selectedImages.size})
+                                </button>
+                            </div>
+                        )}
                         <button
                             onClick={() => handleDownloadAll(originals.map(o => ({ ...o, enhancedPath: null })))}
                             disabled={isDownloading}
@@ -238,7 +282,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                 fontWeight: '600'
                             }}
                         >
-                            {isDownloading ? 'Downloading...' : `📥 Download All (${originals.length})`}
+                            {isDownloading ? 'Downloading...' : `📥 Download All(${originals.length})`}
                         </button>
                     </div>
 
@@ -260,6 +304,36 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                         onError={(e) => console.error('Original Image Load Failed:', img.path, e)}
                                     />
+                                    {/* Selection Checkbox */}
+                                    {onToggleSelection && selectedImages && (
+                                        <div
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onToggleSelection(img.path);
+                                            }}
+                                            style={{
+                                                position: 'absolute',
+                                                top: '0.5rem',
+                                                left: '0.5rem',
+                                                width: '24px',
+                                                height: '24px',
+                                                borderRadius: '50%',
+                                                background: selectedImages.has(img.path) ? 'var(--primary)' : 'rgba(0,0,0,0.5)',
+                                                border: '2px solid white',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                cursor: 'pointer',
+                                                zIndex: 10
+                                            }}
+                                        >
+                                            {selectedImages.has(img.path) && (
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                                </svg>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                                 <div style={{ padding: '1rem' }}>
                                     <p style={{
@@ -297,11 +371,26 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
 
             {/* Result Tabs */}
             {results.map(result => (
-                activeTab === `result-${result.id}` && (
+                activeTab === `result - ${result.id} ` && (
                     <div key={result.id}>
-                        <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
+                        <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
                             <button
-                                onClick={() => handleDownloadAll(result.images, `result-${result.id}`)}
+                                onClick={() => setShowRenameModal(true)}
+                                style={{
+                                    padding: '0.5rem 1rem',
+                                    background: 'var(--secondary)',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: 'var(--radius)',
+                                    cursor: 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '600'
+                                }}
+                            >
+                                Rename
+                            </button>
+                            <button
+                                onClick={() => handleDownloadAll(result.images, `result - ${result.id} `)}
                                 disabled={isDownloading}
                                 style={{
                                     padding: '0.75rem 1.5rem',
@@ -314,7 +403,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                     fontWeight: '600'
                                 }}
                             >
-                                {isDownloading ? 'Downloading...' : `📥 Download All (${result.images.filter(img => img.status === 'done').length}/${result.images.length})`}
+                                {isDownloading ? 'Downloading...' : `📥 Download All(${result.images.filter(img => img.status === 'done').length} / ${result.images.length})`}
                             </button>
                         </div>
 
@@ -350,12 +439,14 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                             fontWeight: '600',
                                             background: img.status === 'done' ? 'var(--success)' :
                                                 img.status === 'processing' ? 'var(--primary)' :
-                                                    img.status === 'error' ? 'var(--error)' : 'rgba(0,0,0,0.6)',
+                                                    img.status === 'stopped' ? 'var(--secondary)' :
+                                                        img.status === 'error' ? 'var(--error)' : 'rgba(0,0,0,0.6)',
                                             color: 'white'
                                         }}>
                                             {img.status === 'done' ? 'Enhanced' :
                                                 img.status === 'processing' ? 'Processing...' :
-                                                    img.status === 'error' ? 'Error' : 'Pending'}
+                                                    img.status === 'stopped' ? 'Stopped' :
+                                                        img.status === 'error' ? 'Error' : 'Pending'}
                                         </div>
                                     </div>
 
@@ -377,7 +468,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                         )}
                                         {img.status === 'done' && img.enhancedPath && (
                                             <button
-                                                onClick={() => handleDownload(img.enhancedPath, img.displayName || `enhanced-${img.originalName}`)}
+                                                onClick={() => handleDownload(img.enhancedPath, img.displayName || `enhanced - ${img.originalName} `)}
                                                 style={{
                                                     marginTop: '0.5rem',
                                                     padding: '0.5rem 1rem',
@@ -524,6 +615,19 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                         ✕
                     </button>
                 </div>
+            )}
+            {showRenameModal && activeTab.startsWith('result-') && (
+                <RenameModal
+                    isOpen={showRenameModal}
+                    onClose={() => setShowRenameModal(false)}
+                    previewImages={results.find(r => r.id === parseInt(activeTab.split('-')[1]))?.images || []}
+                    onRename={(data) => {
+                        const resultId = parseInt(activeTab.split('-')[1]);
+                        if (onRename && resultId) {
+                            onRename(resultId, data);
+                        }
+                    }}
+                />
             )}
         </div>
     );

@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useNotification } from '@/contexts/NotificationContext';
 import PresetWidget from './PresetWidget';
 
-export default function ControlPanel({ onEnhance, isEnhancing, disabled, photoCount, activeTabLabel, onOpenPresetManager, presetRefreshTrigger, onPresetSaved }) {
+export default function ControlPanel({ onEnhance, isEnhancing, disabled, photoCount, selectedCount = 0, activeTabLabel, onOpenPresetManager, presetRefreshTrigger, onPresetSaved }) {
     const [instructions, setInstructions] = useState('');
     const defaultInstructions = "Increase exposure, make colors more vibrant, and sharpen details.";
 
@@ -142,24 +142,26 @@ export default function ControlPanel({ onEnhance, isEnhancing, disabled, photoCo
                         </div>
 
                         <button
-                            type="submit"
-                            disabled={disabled || isEnhancing}
+                            onClick={() => onEnhance(instructions)}
+                            disabled={disabled || isEnhancing || (activeTabLabel !== 'Original' && !activeTabLabel)}
                             style={{
                                 width: '100%',
                                 padding: '1rem',
-                                borderRadius: 'var(--radius)',
-                                border: 'none',
-                                background: disabled ? 'var(--secondary)' : 'linear-gradient(to right, var(--primary), var(--primary-hover))',
+                                background: 'linear-gradient(to right, var(--primary), var(--accent))',
                                 color: 'white',
-                                fontWeight: '600',
+                                border: 'none',
+                                borderRadius: 'var(--radius)',
                                 fontSize: '1rem',
-                                opacity: disabled ? 0.5 : 1,
-                                cursor: disabled ? 'not-allowed' : 'pointer',
-                                transition: 'all 0.2s',
-                                boxShadow: disabled ? 'none' : '0 4px 12px rgba(59, 130, 246, 0.3)'
+                                fontWeight: '600',
+                                cursor: (disabled || isEnhancing) ? 'not-allowed' : 'pointer',
+                                opacity: (disabled || isEnhancing) ? 0.7 : 1,
+                                marginTop: '1.5rem',
+                                boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)'
                             }}
                         >
-                            {isEnhancing ? 'Processing...' : 'Enhance Photos'}
+                            {isEnhancing ? 'Enhancing...' :
+                                selectedCount > 0 ? `Enhance Selected (${selectedCount})` :
+                                    `Enhance All (${photoCount})`}
                         </button>
                     </form>
                 </div>
