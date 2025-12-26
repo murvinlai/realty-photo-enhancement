@@ -136,46 +136,76 @@ export default function EditorModal({ isOpen, onClose, selectedImages, onSave, s
         if (!adj) return 'none';
 
         // Basic Light
-        const b = 100 + (adj.brightness || 0);
-        const c = 100 + (adj.contrast || 0);
+        const bright = adj.brightness || 0;
+        const b = 100 + bright;
+        // Contrast S-Curve proxy: boost standard contrast slightly to mimic punch
+        const c = 100 + (adj.contrast || 0) * 1.1;
 
         // Color: Saturation is direct, Vibrance includes a pop (contrast/brightness)
         const vib = adj.vibrance || 0;
         const sat = adj.saturation || 0;
-        const sFinal = 100 + (vib * 0.7) + (sat * 1.0);
-        const vibPopC = vib * 0.15;
+
+        // Saturation compensation for brightness is handled in `sFinal`
+        const brightComp = bright > 0 ? (bright / 10) : 0;
+        const sFinal = 100 + (vib * 0.8) + (sat * 1.0) + brightComp;
+
+        const vibPopC = vib * 0.1;
         const vibPopB = vib * 0.05;
 
-        // Temperature Simulation (Aggressive)
+        // Temperature Logic (Normalized)
         let tempFilter = '';
         const temp = adj.temperature || 0;
         if (temp > 0) {
-            // Warm: sepia + yellow hue + slight contrast
-            tempFilter = `sepia(${temp * 0.6}%) saturate(${100 + temp * 0.2}%) brightness(${100 + temp * 0.05}%)`;
+            // Warm: sepia + warm hue. Normalized means less brightness boost.
+            tempFilter = `sepia(${temp * 0.5}%) hue-rotate(-10deg) saturate(${100 + temp * 0.1}%)`;
         } else if (temp < 0) {
-            // Cool: invert-sepia + blue hue
-            tempFilter = `hue-rotate(180deg) sepia(${-temp * 0.6}%) hue-rotate(-180deg) saturate(${100 - temp * 0.2}%) brightness(${100 - temp * 0.05}%)`;
+            // Cool: Blue tint.
+            tempFilter = `hue-rotate(180deg) sepia(${-temp * 0.5}%) hue-rotate(-180deg) saturate(${100 - temp * 0.1}%)`;
         }
 
         // Tint
         const h = (adj.tint || 0) * 1.5;
 
-        // Texture Proxies: CSS has no native sharpen. Use contrast boost.
+        // Texture Proxies: CSS has no native sharpen. Use contrast boost and blur filters.
         const sharpness = adj.sharpness || 0;
         const clarity = adj.clarity || 0;
-        const texturePopC = (sharpness * 0.1) + (clarity * 0.3);
+
+        // Positive Sharpness Proxy: Contrast pop
+        const sharpnessPopC = sharpness > 0 ? (sharpness * 0.15) : 0;
+        const texturePopC = sharpnessPopC + (clarity * 0.3);
         const texturePopB = (clarity * 0.1);
 
-        // Highlights/Shadows Proxy:
+        // Negative Sharpness Proxy: Real CSS Blur
+        const blurFilter = sharpness < 0 ? `blur(${Math.abs(sharpness) / 20}px)` : '';
+
+        // Highlights/Shadows/Whites/Blacks Proxy:
         const shadows = adj.shadows || 0;
         const highlights = adj.highlights || 0;
         const whites = adj.whites || 0;
         const blacks = adj.blacks || 0;
 
-        const bFinal = b + (shadows * 0.25) - (highlights * 0.15) + (whites * 0.1) + (blacks * 0.1) + vibPopB + texturePopB;
-        const cFinal = c + (highlights * 0.2) - (shadows * 0.1) + vibPopC + texturePopC;
+        // Weighted Brightness Proxy: 
+        // We reduce the raw brightness factor slightly to mimic the roll-off, 
+        // and compensate with a tiny contrast boost to lift midtones.
+        const bWeight = bright > 0 ? 0.85 : 1.0;
 
-        return `brightness(${bFinal}%) contrast(${cFinal}%) saturate(${sFinal}%) hue-rotate(${h}deg) ${tempFilter}`;
+        // Levels Logic Proxies
+        let blacksB = 0, blacksC = 0;
+        if (blacks > 0) {
+            blacksB = blacks * 0.1; // Lift
+            blacksC = -blacks * 0.05; // Fade
+        } else {
+            blacksB = blacks * 0.1; // Darken
+            blacksC = -blacks * 0.05; // Crush
+        }
+
+        let whitesB = whites * 0.1;
+        let whitesC = whites * 0.05;
+
+        const bFinal = (100 + (bright * bWeight)) + (shadows * 0.1) - (highlights * 0.1) + whitesB + blacksB + vibPopB + texturePopB;
+        const cFinal = c + (highlights * 0.1) - (shadows * 0.05) + whitesC + blacksC + vibPopC + texturePopC + (bright > 0 ? bright * 0.05 : 0);
+
+        return `brightness(${bFinal}%) contrast(${cFinal}%) saturate(${sFinal}%) hue-rotate(${h}deg) ${tempFilter} ${blurFilter}`;
     };
 
     return (

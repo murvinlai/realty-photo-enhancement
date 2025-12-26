@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import RenameModal from './RenameModal';
+import DownloadOptions from './DownloadOptions';
 
 export default function Gallery({ originals, results, onUpdateResult, onActiveTabChange, selectedImages, onToggleSelection, onDeleteSelected, onDeselectAll, onRename, onEdit }) {
     const [activeTab, setActiveTab] = useState('original');
@@ -56,22 +57,49 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
         saveAs(url, filename);
     };
 
-    const handleDownloadAll = async (images, prefix = '') => {
+    const handleDownloadAll = async (images, prefix = '', options = null) => {
         setIsDownloading(true);
 
-        // Prepare file list with ABSOLUTE URLs
+        // Prepare file list
         const filesToDownload = images.map(img => {
             let url = img.enhancedPath || img.path;
-            if (url && url.startsWith('/')) {
+
+            // If advanced options present, use API
+            if (options) {
+                // Determine original path (API needs absolute path or backend resolvable path)
+                // In this app, img.path is typically backend relative or absolute.
+                // We should pass the raw path to the API.
+                // Determine format
+                const format = options.format || 'jpg';
+                const width = options.width || options.customWidth;
+
+                const params = new URLSearchParams({
+                    path: url, // Assuming this is valid for the API
+                    format,
+                    ...(width && { width })
+                });
+                url = `/api/download?${params.toString()}`;
+            } else if (url && url.startsWith('/')) {
                 url = `${window.location.origin}${url}`;
             }
+
+            let filename = prefix ? `${prefix} - ${img.displayName || img.originalName}` : (img.displayName || img.originalName);
+
+            // Fix extension if transforming
+            if (options && options.format) {
+                const nameParts = filename.split('.');
+                if (nameParts.length > 1) nameParts.pop(); // Remove old ext
+                filename = `${nameParts.join('.')}.${options.format === 'jpeg' ? 'jpg' : options.format}`;
+            }
+
             return {
                 url: url,
-                filename: prefix ? `${prefix} - ${img.displayName || img.originalName}` : (img.displayName || img.originalName)
+                filename: filename
             };
         });
 
-        // ELECTRON: Native Bulk Save (Still prefer native if available)
+        // ELECTRON: Native Bulk Save (Skip for now if advanced options used, or treat same if API returns stream)
+        // Electron saver likely just fetches URLs. If URL is local API, it should work.
         if (window.electron) {
             try {
                 const result = await window.electron.saveFiles(filesToDownload);
@@ -227,85 +255,103 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
             {activeTab === 'original' && (
                 <>
                     <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        {selectedImages && selectedImages.size > 0 && (
-                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                <button
-                                    onClick={onDeselectAll}
-                                    style={{
-                                        padding: '0.5rem 1rem',
-                                        background: 'rgba(255,255,255,0.1)',
-                                        color: 'var(--secondary)',
-                                        border: '1px solid var(--border)',
-                                        borderRadius: 'var(--radius)',
-                                        cursor: 'pointer',
-                                        fontSize: '0.9rem',
-                                        fontWeight: '600'
-                                    }}
-                                >
-                                    Unselect All
-                                </button>
-                                <button
-                                    onClick={onDeleteSelected}
-                                    disabled={selectedImages.size === 0}
-                                    style={{
-                                        padding: '0.5rem 1rem',
-                                        background: selectedImages.size > 0 ? 'var(--error)' : 'rgba(255,255,255,0.1)',
-                                        color: selectedImages.size > 0 ? 'white' : 'var(--secondary)',
-                                        border: 'none',
-                                        borderRadius: 'var(--radius)',
-                                        cursor: selectedImages.size > 0 ? 'pointer' : 'not-allowed',
-                                        fontSize: '0.9rem',
-                                        fontWeight: '600',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '0.5rem'
-                                    }}
-                                >
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />
-                                    </svg>
-                                    Delete Selected ({selectedImages.size})
-                                </button>
-                                <button
-                                    onClick={onEdit}
-                                    style={{
-                                        padding: '0.5rem 1rem',
-                                        background: 'var(--primary)',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: 'var(--radius)',
-                                        cursor: 'pointer',
-                                        fontSize: '0.9rem',
-                                        fontWeight: '600',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '0.5rem'
-                                    }}
-                                >
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                                    </svg>
-                                    Edit
-                                </button>
-                            </div>
-                        )}
-                        <button
-                            onClick={() => handleDownloadAll(originals.map(o => ({ ...o, enhancedPath: null })))}
-                            disabled={isDownloading}
-                            style={{
-                                padding: '0.75rem 1.5rem',
-                                background: isDownloading ? 'var(--secondary)' : 'var(--accent)',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: 'var(--radius)',
-                                cursor: isDownloading ? 'wait' : 'pointer',
-                                fontSize: '0.9rem',
-                                fontWeight: '600'
-                            }}
-                        >
-                            {isDownloading ? 'Downloading...' : `📥 Download All(${originals.length})`}
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <button
+                                onClick={onDeselectAll}
+                                disabled={!selectedImages || selectedImages.size === 0}
+                                style={{
+                                    padding: '0.5rem 1rem',
+                                    background: 'rgba(255,255,255,0.1)',
+                                    color: (!selectedImages || selectedImages.size === 0) ? 'rgba(255,255,255,0.3)' : 'var(--secondary)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: 'var(--radius)',
+                                    cursor: (!selectedImages || selectedImages.size === 0) ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '600',
+                                    opacity: (!selectedImages || selectedImages.size === 0) ? 0.5 : 1
+                                }}
+                            >
+                                Unselect All
+                            </button>
+                            <button
+                                onClick={() => setShowRenameModal(true)}
+                                disabled={!selectedImages || selectedImages.size === 0}
+                                style={{
+                                    padding: '0.5rem 1rem',
+                                    background: 'rgba(255,255,255,0.1)',
+                                    color: (!selectedImages || selectedImages.size === 0) ? 'rgba(255,255,255,0.3)' : 'var(--secondary)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: 'var(--radius)',
+                                    cursor: (!selectedImages || selectedImages.size === 0) ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '600',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    opacity: (!selectedImages || selectedImages.size === 0) ? 0.5 : 1
+                                }}
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                </svg>
+                                Rename ({selectedImages ? selectedImages.size : 0})
+                            </button>
+                            <button
+                                onClick={onDeleteSelected}
+                                disabled={!selectedImages || selectedImages.size === 0}
+                                style={{
+                                    padding: '0.5rem 1rem',
+                                    background: (!selectedImages || selectedImages.size === 0) ? 'rgba(255,255,255,0.05)' : 'var(--error)',
+                                    color: (!selectedImages || selectedImages.size === 0) ? 'rgba(255,255,255,0.3)' : 'white',
+                                    border: 'none',
+                                    borderRadius: 'var(--radius)',
+                                    cursor: (!selectedImages || selectedImages.size === 0) ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '600',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    opacity: (!selectedImages || selectedImages.size === 0) ? 0.5 : 1
+                                }}
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />
+                                </svg>
+                                Delete ({selectedImages ? selectedImages.size : 0})
+                            </button>
+                            <button
+                                onClick={onEdit}
+                                disabled={!selectedImages || selectedImages.size === 0}
+                                style={{
+                                    padding: '0.5rem 1rem',
+                                    background: (!selectedImages || selectedImages.size === 0) ? 'rgba(255,255,255,0.05)' : 'var(--primary)',
+                                    color: (!selectedImages || selectedImages.size === 0) ? 'rgba(255,255,255,0.3)' : 'white',
+                                    border: 'none',
+                                    borderRadius: 'var(--radius)',
+                                    cursor: (!selectedImages || selectedImages.size === 0) ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '600',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    opacity: (!selectedImages || selectedImages.size === 0) ? 0.5 : 1
+                                }}
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M12 20h9"></path>
+                                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                                </svg>
+                                Edit ({selectedImages ? selectedImages.size : 0})
+                            </button>
+                        </div>
+                        <div style={{ minWidth: '200px' }}>
+                            <DownloadOptions
+                                buttonLabel={isDownloading ? 'Downloading...' : `📥 Download All(${originals.length})`}
+                                onDownloadCustom={() => handleDownloadAll(originals.map(o => ({ ...o, enhancedPath: null })))}
+                                onAdvancedDownload={(opts) => handleDownloadAll(originals.map(o => ({ ...o, enhancedPath: null })), '', opts)}
+                            />
+                        </div>
                     </div>
 
                     <div style={{
@@ -314,9 +360,17 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                         gap: '1.5rem'
                     }}>
                         {originals.map((img, index) => (
-                            <div key={index} className="glass" style={{ borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+                            <div key={index} className="glass" style={{ borderRadius: 'var(--radius)' }}>
                                 <div
-                                    style={{ position: 'relative', aspectRatio: '4/3', background: '#000', cursor: 'pointer' }}
+                                    style={{
+                                        position: 'relative',
+                                        aspectRatio: '4/3',
+                                        background: '#000',
+                                        cursor: 'pointer',
+                                        borderTopLeftRadius: 'var(--radius)',
+                                        borderTopRightRadius: 'var(--radius)',
+                                        overflow: 'hidden'
+                                    }}
                                     onClick={() => openLightbox(img.path, img.displayName || img.originalName, null)}
                                 >
                                     {console.log('Rendering Image:', img.originalName, img.path)}
@@ -365,22 +419,13 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                     }}>
                                         {img.displayName || img.originalName}
                                     </p>
-                                    <button
-                                        onClick={() => handleDownload(img.path, img.displayName || img.originalName)}
-                                        style={{
-                                            marginTop: '0.5rem',
-                                            padding: '0.5rem 1rem',
-                                            background: 'var(--accent)',
-                                            color: 'white',
-                                            border: 'none',
-                                            borderRadius: 'var(--radius)',
-                                            cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                            width: '100%'
-                                        }}
-                                    >
-                                        Download
-                                    </button>
+                                    <div style={{ marginTop: '0.5rem' }}>
+                                        <DownloadOptions
+                                            imagePath={img.path}
+                                            originalName={img.displayName || img.originalName}
+                                            onDownloadCustom={handleDownload}
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -393,103 +438,101 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                     <div key={result.id}>
                         <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                {selectedImages && selectedImages.size > 0 && (
-                                    <>
-                                        <button
-                                            onClick={onDeselectAll}
-                                            style={{
-                                                padding: '0.5rem 1rem',
-                                                background: 'rgba(255,255,255,0.1)',
-                                                color: 'var(--secondary)',
-                                                border: '1px solid var(--border)',
-                                                borderRadius: 'var(--radius)',
-                                                cursor: 'pointer',
-                                                fontSize: '0.9rem',
-                                                fontWeight: '600'
-                                            }}
-                                        >
-                                            Unselect All
-                                        </button>
-                                        <button
-                                            onClick={onDeleteSelected}
-                                            disabled={selectedImages.size === 0}
-                                            style={{
-                                                padding: '0.5rem 1rem',
-                                                background: selectedImages.size > 0 ? 'var(--error)' : 'rgba(255,255,255,0.1)',
-                                                color: selectedImages.size > 0 ? 'white' : 'var(--secondary)',
-                                                border: 'none',
-                                                borderRadius: 'var(--radius)',
-                                                cursor: selectedImages.size > 0 ? 'pointer' : 'not-allowed',
-                                                fontSize: '0.9rem',
-                                                fontWeight: '600',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.5rem'
-                                            }}
-                                        >
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />
-                                            </svg>
-                                            Delete ({selectedImages.size})
-                                        </button>
-                                        <button
-                                            onClick={onEdit}
-                                            style={{
-                                                padding: '0.5rem 1rem',
-                                                background: 'var(--primary)',
-                                                color: 'white',
-                                                border: 'none',
-                                                borderRadius: 'var(--radius)',
-                                                cursor: 'pointer',
-                                                fontSize: '0.9rem',
-                                                fontWeight: '600',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.5rem'
-                                            }}
-                                        >
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                                            </svg>
-                                            Edit
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
                                 <button
-                                    onClick={() => setShowRenameModal(true)}
+                                    onClick={onDeselectAll}
+                                    disabled={!selectedImages || selectedImages.size === 0}
                                     style={{
                                         padding: '0.5rem 1rem',
-                                        background: 'var(--secondary)',
-                                        color: 'white',
-                                        border: 'none',
+                                        background: 'rgba(255,255,255,0.1)',
+                                        color: (!selectedImages || selectedImages.size === 0) ? 'rgba(255,255,255,0.3)' : 'var(--secondary)',
+                                        border: '1px solid var(--border)',
                                         borderRadius: 'var(--radius)',
-                                        cursor: 'pointer',
+                                        cursor: (!selectedImages || selectedImages.size === 0) ? 'not-allowed' : 'pointer',
                                         fontSize: '0.9rem',
-                                        fontWeight: '600'
+                                        fontWeight: '600',
+                                        opacity: (!selectedImages || selectedImages.size === 0) ? 0.5 : 1
                                     }}
                                 >
-                                    Rename
+                                    Unselect All
                                 </button>
                                 <button
-                                    onClick={() => handleDownloadAll(result.images, `Result ${result.id}`)}
-                                    disabled={isDownloading}
+                                    onClick={() => setShowRenameModal(true)}
+                                    disabled={!selectedImages || selectedImages.size === 0}
                                     style={{
-                                        padding: '0.75rem 1.5rem',
-                                        background: isDownloading ? 'var(--secondary)' : 'var(--accent)',
-                                        color: 'white',
-                                        border: 'none',
+                                        padding: '0.5rem 1rem',
+                                        background: 'rgba(255,255,255,0.1)',
+                                        color: (!selectedImages || selectedImages.size === 0) ? 'rgba(255,255,255,0.3)' : 'var(--secondary)',
+                                        border: '1px solid var(--border)',
                                         borderRadius: 'var(--radius)',
-                                        cursor: isDownloading ? 'wait' : 'pointer',
+                                        cursor: (!selectedImages || selectedImages.size === 0) ? 'not-allowed' : 'pointer',
                                         fontSize: '0.9rem',
-                                        fontWeight: '600'
+                                        fontWeight: '600',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        opacity: (!selectedImages || selectedImages.size === 0) ? 0.5 : 1
                                     }}
                                 >
-                                    {isDownloading ? 'Downloading...' : `📥 Download All(${result.images.filter(img => img.status === 'done').length}/${result.images.length})`}
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                    </svg>
+                                    Rename ({selectedImages ? selectedImages.size : 0})
                                 </button>
+                                <button
+                                    onClick={onDeleteSelected}
+                                    disabled={!selectedImages || selectedImages.size === 0}
+                                    style={{
+                                        padding: '0.5rem 1rem',
+                                        background: (!selectedImages || selectedImages.size === 0) ? 'rgba(255,255,255,0.05)' : 'var(--error)',
+                                        color: (!selectedImages || selectedImages.size === 0) ? 'rgba(255,255,255,0.3)' : 'white',
+                                        border: 'none',
+                                        borderRadius: 'var(--radius)',
+                                        cursor: (!selectedImages || selectedImages.size === 0) ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        opacity: (!selectedImages || selectedImages.size === 0) ? 0.5 : 1
+                                    }}
+                                >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />
+                                    </svg>
+                                    Delete ({selectedImages ? selectedImages.size : 0})
+                                </button>
+                                <button
+                                    onClick={onEdit}
+                                    disabled={!selectedImages || selectedImages.size === 0}
+                                    style={{
+                                        padding: '0.5rem 1rem',
+                                        background: (!selectedImages || selectedImages.size === 0) ? 'rgba(255,255,255,0.05)' : 'var(--primary)',
+                                        color: (!selectedImages || selectedImages.size === 0) ? 'rgba(255,255,255,0.3)' : 'white',
+                                        border: 'none',
+                                        borderRadius: 'var(--radius)',
+                                        cursor: (!selectedImages || selectedImages.size === 0) ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        opacity: (!selectedImages || selectedImages.size === 0) ? 0.5 : 1
+                                    }}
+                                >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M12 20h9"></path>
+                                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                                    </svg>
+                                    Edit ({selectedImages ? selectedImages.size : 0})
+                                </button>
+                            </div>
+                            <div style={{ minWidth: '200px' }}>
+                                <DownloadOptions
+                                    buttonLabel={isDownloading ? 'Downloading...' : `📥 Download All(${result.images.filter(img => img.status === 'done').length}/${result.images.length})`}
+                                    onDownloadCustom={() => handleDownloadAll(result.images, `Result ${result.id}`)}
+                                    onAdvancedDownload={(opts) => handleDownloadAll(result.images, `Result ${result.id}`, opts)}
+                                />
                             </div>
                         </div>
 
@@ -499,9 +542,17 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                             gap: '1.5rem'
                         }}>
                             {result.images.map((img, index) => (
-                                <div key={index} className="glass" style={{ borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+                                <div key={index} className="glass" style={{ borderRadius: 'var(--radius)' }}>
                                     <div
-                                        style={{ position: 'relative', aspectRatio: '4/3', background: '#000', cursor: 'pointer' }}
+                                        style={{
+                                            position: 'relative',
+                                            aspectRatio: '4/3',
+                                            background: '#000',
+                                            cursor: 'pointer',
+                                            borderTopLeftRadius: 'var(--radius)',
+                                            borderTopRightRadius: 'var(--radius)',
+                                            overflow: 'hidden'
+                                        }}
                                         onClick={() => img.enhancedPath && openLightbox(
                                             img.enhancedPath,
                                             img.originalName,
@@ -583,22 +634,13 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                             </p>
                                         )}
                                         {img.status === 'done' && img.enhancedPath && (
-                                            <button
-                                                onClick={() => handleDownload(img.enhancedPath, img.displayName || `enhanced - ${img.originalName} `)}
-                                                style={{
-                                                    marginTop: '0.5rem',
-                                                    padding: '0.5rem 1rem',
-                                                    background: 'var(--accent)',
-                                                    color: 'white',
-                                                    border: 'none',
-                                                    borderRadius: 'var(--radius)',
-                                                    cursor: 'pointer',
-                                                    fontSize: '0.85rem',
-                                                    width: '100%'
-                                                }}
-                                            >
-                                                Download
-                                            </button>
+                                            <div style={{ marginTop: '0.5rem' }}>
+                                                <DownloadOptions
+                                                    imagePath={img.enhancedPath}
+                                                    originalName={img.displayName || `enhanced - ${img.originalName} `}
+                                                    onDownloadCustom={handleDownload}
+                                                />
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -650,6 +692,18 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                 fontSize: '0.9rem'
                             }}>
                                 {lightboxImage.name}
+                            </div>
+                            <div style={{
+                                position: 'absolute',
+                                bottom: '-4.5rem',
+                                right: 0,
+                                width: '200px'
+                            }}>
+                                <DownloadOptions
+                                    imagePath={lightboxImage.path}
+                                    originalName={lightboxImage.name}
+                                    onDownloadCustom={handleDownload}
+                                />
                             </div>
                         </div>
                     </div>
@@ -732,14 +786,18 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                     </button>
                 </div>
             )}
-            {showRenameModal && activeTab.startsWith('result-') && (
+            {showRenameModal && (
                 <RenameModal
                     isOpen={showRenameModal}
                     onClose={() => setShowRenameModal(false)}
-                    previewImages={results.find(r => r.id === parseInt(activeTab.split('-')[1]))?.images || []}
+                    previewImages={activeTab === 'original'
+                        ? (selectedImages.size > 0 ? originals.filter(img => selectedImages.has(img.id)) : originals)
+                        : (results.find(r => r.id === parseInt(activeTab.split('-')[1]))?.images.filter(img => selectedImages.has(img.id)) || [])
+                    }
                     onRename={(data) => {
-                        const resultId = parseInt(activeTab.split('-')[1]);
-                        if (onRename && resultId) {
+                        const isOriginal = activeTab === 'original';
+                        const resultId = isOriginal ? 'original' : parseInt(activeTab.split('-')[1]);
+                        if (onRename) {
                             onRename(resultId, data);
                         }
                     }}

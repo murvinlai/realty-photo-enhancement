@@ -60,6 +60,7 @@
         "dotenv": "^17.2.3",
         "file-saver": "^2.0.5",
         "formidable": "^3.5.1",
+        "heic2any": "^0.0.4",
         "jszip": "^3.10.1",
         "next": "^16.1.1",
         "react": "^19.2.3",

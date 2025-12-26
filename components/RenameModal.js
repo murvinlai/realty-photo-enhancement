@@ -135,7 +135,7 @@ export default function RenameModal({ isOpen, onClose, onRename, previewImages =
                                     type="text"
                                     value={replaceFind}
                                     onChange={(e) => setReplaceFind(e.target.value)}
-                                    style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--input-bg)' }}
+                                    style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--foreground)' }}
                                     placeholder="Text to find"
                                 />
                             </div>
@@ -145,7 +145,7 @@ export default function RenameModal({ isOpen, onClose, onRename, previewImages =
                                     type="text"
                                     value={replaceWith}
                                     onChange={(e) => setReplaceWith(e.target.value)}
-                                    style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--input-bg)' }}
+                                    style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--foreground)' }}
                                     placeholder="Replacement text"
                                 />
                             </div>
@@ -167,7 +167,7 @@ export default function RenameModal({ isOpen, onClose, onRename, previewImages =
                                     type="text"
                                     value={addText}
                                     onChange={(e) => setAddText(e.target.value)}
-                                    style={{ flex: 1, padding: '0.75rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--input-bg)' }}
+                                    style={{ flex: 1, padding: '0.75rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--foreground)' }}
                                     placeholder="Text to add"
                                 />
                             </div>
@@ -183,7 +183,7 @@ export default function RenameModal({ isOpen, onClose, onRename, previewImages =
                                         type="text"
                                         value={customFormat}
                                         onChange={(e) => setCustomFormat(e.target.value)}
-                                        style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--input-bg)' }}
+                                        style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--foreground)' }}
                                         placeholder="e.g. LivingRoom"
                                     />
                                 </div>
@@ -194,7 +194,7 @@ export default function RenameModal({ isOpen, onClose, onRename, previewImages =
                                         min="1"
                                         value={startNumber}
                                         onChange={(e) => setStartNumber(parseInt(e.target.value) || 1)}
-                                        style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--input-bg)' }}
+                                        style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--foreground)' }}
                                     />
                                 </div>
                             </div>

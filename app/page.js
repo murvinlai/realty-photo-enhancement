@@ -90,10 +90,13 @@ export default function Home() {
         const newOriginals = newFiles.map(file => {
             let displayOriginalName = file.originalName;
 
-            // If the server converted HEIC to JPG, update the display name extension
-            if ((file.originalName.toLowerCase().endsWith('.heic') || file.originalName.toLowerCase().endsWith('.heif')) &&
-                file.path.toLowerCase().endsWith('.jpg')) {
-                displayOriginalName = file.originalName.replace(/\.(heic|heif)$/i, '.jpg');
+            // If the server changed extension (e.g. HEIC -> JPG), update the display name
+            const origExt = file.originalName.match(/\.[^.]+$/)?.[0]?.toLowerCase();
+            const newExt = file.path.match(/\.[^.]+$/)?.[0]?.toLowerCase();
+
+            if (origExt && newExt && origExt !== newExt) {
+                // Replace extension while preserving case of the base name
+                displayOriginalName = file.originalName.replace(/\.[^.]+$/, newExt);
             }
 
             return {
@@ -132,28 +135,22 @@ export default function Home() {
             return;
         }
 
-        // 1. Remove from local state
+        // 1. Remove from originals
         setOriginals(prev => prev.filter(img => !selectedImages.has(img.id)));
 
-        // 2. Clear selection
-        setSelectedImages(new Set());
+        // 2. Remove from results
+        setResults(prev => prev.map(result => ({
+            ...result,
+            images: result.images.filter(img => !selectedImages.has(img.id))
+        })).filter(result => result.images.length > 0)); // Optional: remove empty results
 
-        // 3. Optional: Delete from server (if desired/implemented in API)
-        // For now, consistent with "Start Over" logic which just clears state, 
-        // but maybe we should technically delete files? 
-        // The implementation plan mainly focused on UI deletion. 
-        // Given "Clear Storage" exists, maybe UI only is safe for now, 
-        // OR we can fire a background request to delete specific files.
-        // Let's stick to UI removal for "Originals" context to match "Start Over" behavior which is client-side list clear.
-        // Actually, user said "delete any selected one", usually implies gone.
-        // But since "Start Over" button clears originals from state, let's mirror that.
+        // 3. Clear selection
+        setSelectedImages(new Set());
     };
 
     const handleRename = (resultId, { mode, params }) => {
-        setResults(prev => prev.map(result => {
-            if (result.id !== resultId) return result;
-
-            const newImages = result.images.map((img, index) => {
+        const applyRename = (images) => {
+            return images.map((img, index) => {
                 let currentName = (img.displayName || img.originalName).trim();
                 const ext = currentName.match(/\.[^.]+$/)?.[0] || '';
                 const baseName = currentName.replace(/\.[^.]+$/, '');
@@ -181,9 +178,16 @@ export default function Home() {
                     displayName: `${newBaseName.trim()}${ext.trim()}`
                 };
             });
+        };
 
-            return { ...result, images: newImages };
-        }));
+        if (resultId === 'original') {
+            setOriginals(prev => applyRename(prev));
+        } else {
+            setResults(prev => prev.map(result => {
+                if (result.id !== resultId) return result;
+                return { ...result, images: applyRename(result.images) };
+            }));
+        }
     };
 
 

@@ -36,34 +36,46 @@ export async function POST(request) {
             let filename = file.name.replace(/\s+/g, '_');
             const ext = path.extname(filename).toLowerCase();
 
-            // HEIC/HEIF Detection (Extension or Content)
+            // HEIC/HEIF Detection
             let isHeic = ext === '.heic' || ext === '.heif';
 
-            // If extension doesn't match, check actual metadata using Sharp
-            if (!isHeic) {
-                try {
-                    const metadata = await sharp(buffer).metadata();
-                    if (metadata.format === 'heif' || metadata.format === 'heic') {
-                        isHeic = true;
-                        console.log(`Detected HEIC disguised as ${ext}: ${filename}`);
-                    }
-                } catch (e) {
-                    console.warn('Failed to probe image metadata:', e);
-                }
-            }
-
+            // Conversion Logic
             if (isHeic) {
                 try {
-                    console.log(`Converting HEIC: ${filename}`);
+                    console.log(`[Upload] Converting HEIC to JPEG: ${filename}`);
+                    // Attempt 1: With rotation (preserves EXIF orientation)
                     buffer = await sharp(buffer)
+                        .rotate()
                         .jpeg({ quality: 90 })
                         .toBuffer();
+                    console.log(`[Upload] Primary conversion successful: ${filename}`);
+                } catch (primaryError) {
+                    console.warn('[Upload] Primary HEIC conversion failed (rotate blocked?), trying fallback:', primaryError.message);
+                    try {
+                        // Attempt 2: Simple conversion without rotation
+                        buffer = await sharp(buffer)
+                            .jpeg({ quality: 90 })
+                            .toBuffer();
+                        console.log(`[Upload] Fallback conversion successful: ${filename}`);
+                    } catch (fallbackError) {
+                        console.error('[Upload] HEIC conversion CRITICAL failure:', fallbackError);
+                        throw new Error(`HEIC Conversion Failed: ${fallbackError.message}`);
+                    }
+                }
 
-                    // Update filename to .jpg
-                    filename = filename.substring(0, filename.lastIndexOf('.')) + '.jpg';
-                    console.log(`Converted to: ${filename}`);
-                } catch (conversionError) {
-                    console.error('HEIC conversion failed:', conversionError);
+                // Update filename to .jpg
+                const baseName = filename.substring(0, filename.lastIndexOf('.')) || filename;
+                filename = `${baseName}.jpg`;
+            } else {
+                // For non-HEIC, we still want to ensure they are browser-compatible and rotated
+                try {
+                    const metadata = await sharp(buffer).metadata();
+                    // Optional: If it's a very large image or needs rotation
+                    if (metadata.orientation || metadata.width > 4000) {
+                        buffer = await sharp(buffer).rotate().toBuffer();
+                    }
+                } catch (e) {
+                    console.warn(`[Upload] Rotation/Metadata check skipped for ${filename}:`, e.message);
                 }
             }
 
@@ -85,6 +97,6 @@ export async function POST(request) {
         return NextResponse.json({ success: true, files: savedFiles });
     } catch (error) {
         console.error('Upload error:', error);
-        return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Upload failed' }, { status: 500 });
     }
 }

@@ -8,6 +8,12 @@ export async function POST(request) {
     try {
         const { imagePath, instructions, sessionId } = await request.json();
 
+
+        if (!process.env.GEMINI_API_KEY) {
+            console.error('Missing GEMINI_API_KEY');
+            return NextResponse.json({ error: 'Server Configuration Error: Missing API Key' }, { status: 500 });
+        }
+
         if (!imagePath || !instructions) {
             return NextResponse.json({ error: 'Missing imagePath or instructions' }, { status: 400 });
         }
@@ -65,7 +71,9 @@ export async function POST(request) {
         }
 
         // 1. Read input image
+        console.time('ReadInput');
         const imageBuffer = await readFile(absoluteInputPath);
+        console.timeEnd('ReadInput');
         const imageBase64 = imageBuffer.toString('base64');
 
         // Log input dimensions to debug resolution issues
@@ -92,6 +100,7 @@ export async function POST(request) {
 
         // 2. Call Gemini 3 Pro for Image Editing
         console.log(`[Gemini 3] Processing: ${filename}`);
+        console.time('GeminiRequest');
 
         const response = await genaiClient.models.generateContent({
             model: 'gemini-3-pro-image-preview',
@@ -117,6 +126,7 @@ export async function POST(request) {
                 }
             }
         });
+        console.timeEnd('GeminiRequest');
 
         // 3. Handle Generated Image Response
         const candidate = response.candidates?.[0];
@@ -179,8 +189,8 @@ export async function POST(request) {
     } catch (error) {
         console.error('Enhance API (Gemini 3) Error:', error);
         return NextResponse.json({
-            error: 'AI Enhancement Failed',
-            details: error.message
+            error: `AI Enhancement Failed: ${error.message}`,
+            details: error.stack
         }, { status: 500 });
     }
 }

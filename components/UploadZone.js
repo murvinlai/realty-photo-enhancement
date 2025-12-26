@@ -36,21 +36,56 @@ export default function UploadZone({ onUploadComplete, onReset, onStop, isProces
         setIsUploading(true);
         const formData = new FormData();
 
-        for (let i = 0; i < fileList.length; i++) {
-            formData.append('files', fileList[i]);
-        }
-
-        if (sessionId) {
-            formData.append('sessionId', sessionId);
-        }
-
         try {
+            // Dynamically import heic2any to avoid SSR issues
+            const heic2any = (await import('heic2any')).default;
+
+            for (let i = 0; i < fileList.length; i++) {
+                const file = fileList[i];
+                const lowerName = file.name.toLowerCase();
+                const isHeic = lowerName.endsWith('.heic') || lowerName.endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
+
+                if (isHeic) {
+                    console.log(`[Client] Converting HEIC to JPEG: ${file.name}`);
+                    try {
+                        const convertedBlob = await heic2any({
+                            blob: file,
+                            toType: 'image/jpeg',
+                            quality: 0.9
+                        });
+
+                        // heic2any might return a single blob or an array
+                        const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+                        const newName = file.name.replace(/\.(heic|heif)$/i, '.jpg');
+                        const newFile = new File([blob], newName, { type: 'image/jpeg' });
+
+                        formData.append('files', newFile);
+                        console.log(`[Client] Converted to: ${newName}`);
+                    } catch (convErr) {
+                        console.error('Client-side HEIC conversion failed:', convErr);
+                        // Fallback: try uploading original (maybe server can handle it, though unlikely given previous errors)
+                        // Or just alert user. Let's try to upload original but warn.
+                        console.warn('Falling back to original upload.');
+                        formData.append('files', file);
+                    }
+                } else {
+                    formData.append('files', file);
+                }
+            }
+
+            if (sessionId) {
+                formData.append('sessionId', sessionId);
+            }
+
             const response = await fetch('/api/upload', {
                 method: 'POST',
                 body: formData,
             });
 
-            if (!response.ok) throw new Error('Upload failed');
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Upload failed');
+            }
 
             const data = await response.json();
             if (onUploadComplete) {
@@ -58,10 +93,9 @@ export default function UploadZone({ onUploadComplete, onReset, onStop, isProces
             }
         } catch (error) {
             console.error('Error uploading files:', error);
-            alert('Failed to upload files');
+            alert(error.message || 'Failed to upload files');
         } finally {
             setIsUploading(false);
-            // Reset file input
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
