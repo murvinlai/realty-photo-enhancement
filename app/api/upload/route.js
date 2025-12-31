@@ -15,31 +15,38 @@ export async function POST(request) {
 
         // Determine Storage Path
         const userDataPath = process.env.USER_DATA_PATH;
-        let uploadDir;
-        let publicUrlPrefix;
+        let uploadDir; // Source (Untouched)
+        let primaryDir; // Primary (Working Copy)
+        let publicUrlPrefix; // Points to Primary
 
         if (userDataPath) {
             uploadDir = sessionId ? path.join(userDataPath, 'uploads', sessionId) : path.join(userDataPath, 'uploads');
-            publicUrlPrefix = sessionId ? `/api/media/uploads/${sessionId}` : '/api/media/uploads';
+            primaryDir = sessionId ? path.join(userDataPath, 'primary', sessionId) : path.join(userDataPath, 'primary');
+            publicUrlPrefix = sessionId ? `/api/media/primary/${sessionId}` : '/api/media/primary';
         } else {
             uploadDir = sessionId ? path.join(process.cwd(), 'public/uploads', sessionId) : path.join(process.cwd(), 'public/uploads');
-            publicUrlPrefix = sessionId ? `/uploads/${sessionId}` : '/uploads';
+            primaryDir = sessionId ? path.join(process.cwd(), 'public/primary', sessionId) : path.join(process.cwd(), 'public/primary');
+            // Ensure Primary URL matches the physical path structure
+            publicUrlPrefix = sessionId ? `/primary/${sessionId}` : '/primary';
         }
 
-        // Ensure directory exists
+        // Ensure directories exist
         await mkdir(uploadDir, { recursive: true });
+        await mkdir(primaryDir, { recursive: true });
 
         const savedFiles = [];
 
         for (const file of files) {
             let buffer = Buffer.from(await file.arrayBuffer());
+            const rawBuffer = Buffer.from(buffer); // Keep raw for Source
+
             let filename = file.name.replace(/\s+/g, '_');
             const ext = path.extname(filename).toLowerCase();
 
             // HEIC/HEIF Detection
             let isHeic = ext === '.heic' || ext === '.heif';
 
-            // Conversion Logic
+            // Conversion Logic (For Primary Copy ONLY)
             if (isHeic) {
                 try {
                     console.log(`[Upload] Converting HEIC to JPEG: ${filename}`);
@@ -82,15 +89,21 @@ export async function POST(request) {
             // Generate unique filename (Session isolation handles conflicts now)
             // Use original filename (sanitized)
             const uniqueFilename = filename;
-            const filepath = path.join(uploadDir, uniqueFilename);
 
-            await writeFile(filepath, buffer);
+            // 1. Save Source (Untouched - except Raw upload)
+            const sourcePath = path.join(uploadDir, file.name.replace(/\s+/g, '_')); // Authentically Original name
+            await writeFile(sourcePath, rawBuffer);
+
+            // 2. Save Primary (Working Copy - Converted/Rotated)
+            const primaryPath = path.join(primaryDir, uniqueFilename);
+            await writeFile(primaryPath, buffer);
 
             savedFiles.push({
                 originalName: file.name,
                 filename: uniqueFilename,
-                path: `${publicUrlPrefix}/${uniqueFilename}`,
-                absolutePath: filepath
+                path: `${publicUrlPrefix}/${uniqueFilename}`, // Frontend uses this Primary path
+                absolutePath: primaryPath,
+                sourcePath: sourcePath // Metadata only, not used by frontend by default
             });
         }
 

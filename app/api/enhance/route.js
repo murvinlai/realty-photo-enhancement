@@ -6,7 +6,7 @@ import sharp from 'sharp';
 
 export async function POST(request) {
     try {
-        const { imagePath, instructions, sessionId } = await request.json();
+        const { imagePath, instructions, sessionId, suffix, originalName } = await request.json();
 
 
         if (!process.env.GEMINI_API_KEY) {
@@ -18,12 +18,20 @@ export async function POST(request) {
             return NextResponse.json({ error: 'Missing imagePath or instructions' }, { status: 400 });
         }
 
-        const filename = path.basename(imagePath);
-        const ext = path.extname(filename);
-        const nameWithoutExt = path.basename(filename, ext);
+        // Clean query params (e.g., ?t=timestamp) from the path
+        const cleanPath = imagePath.split('?')[0];
 
-        // timestamp removed from filename as folder is unique per session
-        const outputFilename = `enhanced-${nameWithoutExt}.png`; // Always PNG for generative output
+        const filename = path.basename(cleanPath);
+        const ext = path.extname(filename);
+
+        let nameWithoutExt = path.basename(filename, ext);
+        if (originalName) {
+            // Use original name if provided to avoid stacking prefixes/suffixes (e.g. enhanced-enhanced-...)
+            nameWithoutExt = path.parse(originalName).name;
+        }
+
+        // Use suffix if provided (e.g. -result-1), otherwise default to enhanced- prefix
+        const outputFilename = suffix ? `${nameWithoutExt}${suffix}.png` : `enhanced-${nameWithoutExt}.png`;
 
         // Handle path resolution based on environment
         const userDataPath = process.env.USER_DATA_PATH;
@@ -37,15 +45,15 @@ export async function POST(request) {
             // We need to resolve this back to the absolute path
 
             // Basic logic: if it starts with /api/media/, strip it and join with userDataPath
-            if (imagePath.startsWith('/api/media/')) {
-                const relativePath = imagePath.replace('/api/media/', '');
+            if (cleanPath.startsWith('/api/media/')) {
+                const relativePath = cleanPath.replace('/api/media/', '');
                 absoluteInputPath = path.join(userDataPath, relativePath);
-            } else if (imagePath.startsWith('/uploads')) {
+            } else if (cleanPath.startsWith('/uploads')) {
                 // Legacy or fallback
-                absoluteInputPath = path.join(userDataPath, imagePath);
+                absoluteInputPath = path.join(userDataPath, cleanPath);
             } else {
                 // Fallback to public if logic fails (unsafe in prod but...)
-                absoluteInputPath = path.join(process.cwd(), 'public', imagePath);
+                absoluteInputPath = path.join(process.cwd(), 'public', cleanPath);
             }
 
             // Output Config
@@ -59,7 +67,7 @@ export async function POST(request) {
 
         } else {
             // Dev/Standard: Use public/
-            absoluteInputPath = path.join(process.cwd(), 'public', imagePath);
+            absoluteInputPath = path.join(process.cwd(), 'public', cleanPath);
 
             const processedDir = sessionId ? path.join(process.cwd(), 'public/processed', sessionId) : path.join(process.cwd(), 'public/processed');
             // Ensure local dev processed dir exists too

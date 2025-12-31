@@ -22,21 +22,23 @@ export async function POST(request) {
         if (userDataPath) {
             const relativePath = cleanPath.replace('/api/media/', '');
             absoluteInputPath = path.join(userDataPath, relativePath);
-            sessionDir = path.join(userDataPath, 'processed', sessionId || 'default');
-            publicUrlPrefix = `/api/media/processed/${sessionId || 'default'}`;
+            // Overwrite In-Place: Output Dir is same as Input Dir
+            sessionDir = path.dirname(absoluteInputPath);
+            publicUrlPrefix = path.dirname(cleanPath);
         } else {
             const relativePath = cleanPath.startsWith('/') ? cleanPath.slice(1) : cleanPath;
             absoluteInputPath = path.join(process.cwd(), 'public', relativePath);
-            sessionDir = path.join(process.cwd(), 'public', 'uploads', sessionId || 'default', 'processed');
-            publicUrlPrefix = `/uploads/${sessionId || 'default'}/processed`;
+            // Overwrite In-Place: Output Dir is same as Input Dir
+            sessionDir = path.dirname(absoluteInputPath);
+            publicUrlPrefix = path.dirname(cleanPath);
         }
 
-        // Ensure output dir exists
+        // Ensure output dir exists (redundant if checking input, but safe)
         await mkdir(sessionDir, { recursive: true });
 
         const outputFilename = path.basename(cleanPath);
-        const absoluteOutputPath = path.join(sessionDir, outputFilename);
-        const publicOutputPath = `${publicUrlPrefix}/${outputFilename}`;
+        const absoluteOutputPath = absoluteInputPath; // OVERWRITE
+        const publicOutputPath = cleanPath; // Same URL (Frontend will append ?t=...)
 
         // Process with Sharp
         const imageBuffer = await readFile(absoluteInputPath);
@@ -50,18 +52,17 @@ export async function POST(request) {
         const t = (adjustments.temperature || 0) / 200;
         const tint = (adjustments.tint || 0) / 200;
 
-        // Temperature: Warm (+R, -B). Cool (-R, +B).
-        // Luminance shift: +R adds 0.3, -B removes 0.1. Net +0.2.
-        // Compensate Green: -0.2/0.6 = ~-0.33
-        const tR = t;
-        const tB = -t;
-        const tG = -t * 0.33;
-
         // Tint: Magenta (+R, +B, -G). Green (-R, -B, +G).
-        // +Magenta (Tint>0): +R, +B. Luma increase ~0.4. Green must drop ~0.66.
         const tiR = tint;
         const tiB = tint;
-        const tiG = -tint * 0.7;
+        const tiG = -tint; // Direct reciprocal for Green
+
+        // Combined Diagonal Matrix weights:
+        // Temperature (Warmth): Boost Red, Cut Blue. Keep Green relatively high for Yellow.
+        // Temperature (Coolness): Cut Red, Boost Blue. 
+        const tR = t;
+        const tB = -t;
+        const tG = t * 0.8; // Stronger green boost for "Golden/Yellow" warmth vs Red warmth
 
         // Recomb Matrix: [R, G, B, (A)]
         if (hasAlpha) {
@@ -94,68 +95,61 @@ export async function POST(request) {
             saturation: saturationMult
         });
 
-        // --- 3. Light (LUT-based) ---
-        const lut = Buffer.alloc(256);
-        const b = (adjustments.brightness || 0);
-        const con = (adjustments.contrast || 0);
-        const h = (adjustments.highlights || 0);
-        const s = (adjustments.shadows || 0);
-        const w = (adjustments.whites || 0);
-        const bl = (adjustments.blacks || 0);
+        // --- 3. Light (Using Linear/Modulate instead of LUT) ---
+        const b = (adjustments.brightness || 0);   // -100 to 100
+        const con = (adjustments.contrast || 0);   // -100 to 100
+        const w = (adjustments.whites || 0);       // -100 to 100
+        const bl = (adjustments.blacks || 0);      // -100 to 100
+        // Shadows/Highlights require mask or complex curves, skipping simple approximation for now or using very subtle gamma if needed.
+        // For standard "Light" controls:
 
-        // Levels Calculations
-        let inBlack = 0, inWhite = 255, outBlack = 0, outWhite = 255;
-        // Blacks: +Lift Output Black, -Crush Input Black
-        if (bl > 0) outBlack = bl * 0.6; // Scale down slightly
-        else inBlack = -bl * 0.6;
-        // Whites: +Push Input White (Clip), -Dim Output White
-        if (w > 0) inWhite = 255 - (w * 0.6);
-        else outWhite = 255 + (w * 0.6);
+        // A. Brightness (Simple offset vs Exposure)
+        // Sharp's modulate.brightness is a multiplier (e.g. 0.5 to 1.5).
+        // Let's map -100..100 to 0.5..1.5 roughly, or use linear offset.
+        // Lightroom "Brightness" is often exposure (multiplier). "Offset" is wash/haze.
+        // Let's stick to standard Modulate brightness (Multiplier) for major exposure changes.
+        const brightnessMult = 1 + (b / 100);
 
-        // Contrast S-Curve Factor
-        // Formula: f = (259*(C+255))/(255*(259-C))
+        // B. Contrast (S-Curve approximation via linear expansion)
+        // factor = (259 * (C + 255)) / (255 * (259 - C))
+        // newVal = factor * (oldVal - 128) + 128
+        // This is a linear operation: slope = factor, offset = 128*(1-factor)
         const contrastFactor = (259 * (con + 255)) / (255 * (259 - con));
+        const contrastOffset = 128 * (1 - contrastFactor);
 
-        for (let i = 0; i < 256; i++) {
-            let val = i;
+        // C. Levels (Whites/Blacks) -> Linear Expansion
+        // Blacks: Lifting blacks (make them gray) or crushing them?
+        // Typically "Blacks" slider shifts the black point.
+        // Whites: shifts the white point.
+        // We can fold this into the linear transformation.
+        // Linear(a, b) -> pixel * a + b
 
-            // 1. Levels (Histogram Stretch)
-            val = outBlack + ((val - inBlack) * (outWhite - outBlack)) / (inWhite - inBlack);
-            val = Math.max(0, Math.min(255, val));
+        // Combine Contrast and Levels into single Linear op to avoid clipping in between
+        let slope = contrastFactor;
+        let intercept = contrastOffset;
 
-            // 2. Brightness (Highlight-Preserving)
-            if (b > 0) {
-                const boostWeight = 1 - Math.pow(val / 255, 2);
-                val += b * boostWeight;
-            } else {
-                val += b;
-            }
+        // Apply Brightness via Modulate first (standard order usually) or last?
+        // Sharp applies operations effectively sequentially.
 
-            // 3. Contrast (S-Curve)
-            if (con !== 0) {
-                val = contrastFactor * (val - 128) + 128;
-            }
+        // Whites/Blacks approximations:
+        // +Blacks: add offset, -Blacks: subtract offset (crush)
+        // +Whites: increase slope?
 
-            // 4. Targeted Highlights/Shadows (Applied after global contrast to Refine)
+        // Let's keep it simple and robust:
+        // 1. Modulate (Brightness, Saturation)
+        // 2. Linear (Contrast)
 
-            // Shadows (Narrow: 0-120)
-            if (s !== 0 && val < 120) {
-                const sWeight = Math.pow(Math.max(0, 1 - (val / 120)), 2.0);
-                const sBoost = s * sWeight * 1.5;
-                // Add boost but clamp to ensure we don't invert or break continuity
-                val += sBoost;
-            }
+        // Additional linear offset for blacks/whites (very rough approx)
+        intercept += (bl * 0.5); // Shift black point
+        slope += (w * 0.01);     // Expand whites (slope)
 
-            // Highlights (Narrow: 160-255)
-            if (h !== 0 && val > 160) {
-                const hWeight = Math.pow(Math.max(0, (val - 160) / 95), 2.0);
-                val += h * hWeight * 2.0;
-            }
+        pipeline = pipeline.modulate({
+            brightness: Math.max(0.1, brightnessMult), // Protect against negative
+            saturation: saturationMult
+        });
 
-            lut[i] = Math.max(0, Math.min(255, Math.round(val)));
-        }
+        pipeline = pipeline.linear(slope, intercept);
 
-        pipeline = pipeline.lut(lut);
 
         // --- 4. Texture (Sharpness & Clarity) ---
         const sharpness = adjustments.sharpness || 0;

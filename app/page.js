@@ -9,21 +9,24 @@ import ControlPanel from '@/components/ControlPanel';
 import Gallery from '@/components/Gallery';
 import PresetManagementModal from '@/components/PresetManagementModal';
 import EditorModal from '@/components/EditorModal';
+import LensEditorModal from '@/components/LensEditorModal';
 
 export default function Home() {
     const { user, loading } = useAuth();
     const router = useRouter();
-    const [originals, setOriginals] = useState([]);
+    const [primaries, setPrimaries] = useState([]);
     const [results, setResults] = useState([]);
     const [resultCounter, setResultCounter] = useState(0);
     const [isEnhancing, setIsEnhancing] = useState(false);
-    const [activeTabLabel, setActiveTabLabel] = useState('Original');
+    const [activeTabLabel, setActiveTabLabel] = useState('Primary');
     const [showPresetManager, setShowPresetManager] = useState(false);
     const [presetRefreshTrigger, setPresetRefreshTrigger] = useState(0);
     const [selectedImages, setSelectedImages] = useState(new Set());
     const [sessionId, setSessionId] = useState('');
     const [showEditor, setShowEditor] = useState(false);
+    const [showLensEditor, setShowLensEditor] = useState(false);
     const [editStates, setEditStates] = useState({}); // { [imageId]: { brightness: 0, ... } }
+    const [lensStates, setLensStates] = useState({}); // { [imageId]: { lensCorrection: 0, ... } }
     const abortControllerRef = useRef(null);
 
     const generateSessionId = () => {
@@ -87,7 +90,7 @@ export default function Home() {
 
     const handleUploadComplete = (newFiles) => {
         // Add new files to originals array
-        const newOriginals = newFiles.map(file => {
+        const newPrimaries = newFiles.map(file => {
             let displayOriginalName = file.originalName;
 
             // If the server changed extension (e.g. HEIC -> JPG), update the display name
@@ -107,7 +110,7 @@ export default function Home() {
                 uploadedAt: Date.now()
             };
         });
-        setOriginals(prev => [...prev, ...newOriginals]);
+        setPrimaries(prev => [...prev, ...newPrimaries]);
     };
 
     const handleToggleSelection = (id) => {
@@ -135,8 +138,8 @@ export default function Home() {
             return;
         }
 
-        // 1. Remove from originals
-        setOriginals(prev => prev.filter(img => !selectedImages.has(img.id)));
+        // 1. Remove from originals (primaries)
+        setPrimaries(prev => prev.filter(img => !selectedImages.has(img.id)));
 
         // 2. Remove from results
         setResults(prev => prev.map(result => ({
@@ -148,13 +151,14 @@ export default function Home() {
         setSelectedImages(new Set());
     };
 
-    const handleRename = (resultId, { mode, params }) => {
-        const applyRename = (images) => {
-            return images.map((img, index) => {
+    const handleRename = async (resultId, { mode, params }) => {
+        setIsEnhancing(true);
+        try {
+            // Helper to compute new name (Shared logic with preview)
+            const computeNewName = (img, index) => {
                 let currentName = (img.displayName || img.originalName).trim();
                 const ext = currentName.match(/\.[^.]+$/)?.[0] || '';
                 const baseName = currentName.replace(/\.[^.]+$/, '');
-
                 let newBaseName = baseName;
 
                 if (mode === 'replace') {
@@ -172,21 +176,94 @@ export default function Home() {
                     const numStr = String(params.startNumber + index);
                     newBaseName = `${nameStr}${numStr}`;
                 }
+                return `${newBaseName.trim()}${ext.trim()}`;
+            };
 
-                return {
-                    ...img,
-                    displayName: `${newBaseName.trim()}${ext.trim()}`
-                };
-            });
-        };
+            // 1. Identify images to rename
+            let imagesToRename = [];
+            if (resultId === 'primary') {
+                imagesToRename = primaries;
+            } else {
+                const res = results.find(r => r.id === resultId);
+                if (res) imagesToRename = res.images;
+            }
 
-        if (resultId === 'original') {
-            setOriginals(prev => applyRename(prev));
-        } else {
-            setResults(prev => prev.map(result => {
-                if (result.id !== resultId) return result;
-                return { ...result, images: applyRename(result.images) };
-            }));
+            // Filter if selection is active
+            if (selectedImages.size > 0) {
+                imagesToRename = imagesToRename.filter(img => selectedImages.has(img.id));
+            }
+
+            // 2. Process Renames
+            // We use a mapping of ID -> NewData to update state in one go
+            const updates = {}; // { [id]: { displayName, path } }
+
+            for (let i = 0; i < imagesToRename.length; i++) {
+                const img = imagesToRename[i];
+                const newName = computeNewName(img, i);
+
+                // Skip if name hasn't changed (optimization)
+                if (newName === (img.displayName || img.originalName)) continue;
+
+                try {
+                    const response = await fetch('/api/rename', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            imagePath: img.enhancedPath || img.path, // Rename the expected physical file (enhanced if exists)
+                            newName: newName
+                        })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        updates[img.id] = {
+                            displayName: data.finalName,
+                            path: `${data.path}?t=${Date.now()}` // Bust cache
+                        };
+                    } else {
+                        console.error(`Rename failed for ${img.id}`);
+                    }
+                } catch (e) {
+                    console.error(`Rename error for ${img.id}`, e);
+                }
+            }
+
+            // 3. Update State
+            const applyUpdates = (images) => {
+                return images.map(img => {
+                    if (updates[img.id]) {
+                        return {
+                            ...img,
+                            displayName: updates[img.id].displayName,
+                            // Only update path if it was the source path that was renamed
+                            // CAREFUL: If we renamed the enhanced path, we should update enhancedPath.
+                            // But our logic above sent `enhancedPath || path`.
+                            // If `img.enhancedPath` existed, we renamed that file. So update `enhancedPath`.
+                            // If not, we renamed `path` (original).
+                            ...(img.enhancedPath
+                                ? { enhancedPath: updates[img.id].path }
+                                : { path: updates[img.id].path }
+                            )
+                        };
+                    }
+                    return img;
+                });
+            };
+
+            if (resultId === 'primary') {
+                setPrimaries(prev => applyUpdates(prev));
+            } else {
+                setResults(prev => prev.map(result => {
+                    if (result.id !== resultId) return result;
+                    return { ...result, images: applyUpdates(result.images) };
+                }));
+            }
+
+        } catch (error) {
+            console.error('Batch rename error', error);
+            alert('An error occurred during renaming.');
+        } finally {
+            setIsEnhancing(false);
         }
     };
 
@@ -230,17 +307,17 @@ export default function Home() {
         let sourceImages = [];
         let sourceLabel = '';
 
-        if (!activeTabLabel || activeTabLabel === 'Original') {
+        if (!activeTabLabel || activeTabLabel === 'Primary') {
             // Check if there are selected images
             const pool = (selectedImages.size > 0)
-                ? originals.filter(img => selectedImages.has(img.id))
-                : originals;
+                ? primaries.filter(img => selectedImages.has(img.id))
+                : primaries;
 
             sourceImages = pool.map(orig => ({
                 path: orig.path,
                 originalName: orig.originalName
             }));
-            sourceLabel = 'Original';
+            sourceLabel = 'Primary';
         } else {
             // Parse "Version X" or "Result X" to find the result
             const match = activeTabLabel.match(/(Version|Result) (\d+)/i);
@@ -265,9 +342,9 @@ export default function Home() {
 
         // Fallback to originals if logic fails or empty
         if (sourceImages.length === 0) {
-            console.warn("Could not find source images for tab:", activeTabLabel, "- Falling back to originals");
-            sourceImages = originals.map(orig => ({ path: orig.path, originalName: orig.originalName }));
-            sourceLabel = 'Original';
+            console.warn("Could not find source images for tab:", activeTabLabel, "- Falling back to primaries");
+            sourceImages = primaries.map(orig => ({ path: orig.path, originalName: orig.originalName }));
+            sourceLabel = 'Primary';
         }
 
         // Create new result entry
@@ -312,7 +389,9 @@ export default function Home() {
                     body: JSON.stringify({
                         imagePath: src.path,
                         instructions,
-                        sessionId: sessionId // Send session ID
+                        sessionId: sessionId, // Send session ID
+                        suffix: `-result-${newResultId}`,
+                        originalName: src.originalName
                     }),
                     signal
                 });
@@ -419,36 +498,119 @@ export default function Home() {
 
     const handleReset = () => {
         if (window.confirm('Start fresh? This will clear all uploaded photos and results.')) {
-            setOriginals([]);
+            setPrimaries([]);
             setResults([]);
             setResultCounter(0);
-            setActiveTabLabel('Original');
+            setActiveTabLabel('Primary');
             setIsEnhancing(false);
             setSelectedImages(new Set());
             setSessionId(generateSessionId()); // Reset Session ID with new timestamp
             setEditStates({}); // Clear edit history
+            setLensStates({}); // Clear lens history
+        }
+    };
+
+    // Helper to find image object across all tabs
+    const findImageById = (id) => {
+        // Use String string comparison for safety (handle number vs string ID types)
+        const sid = String(id);
+        const orig = primaries.find(o => String(o.id) === sid);
+        if (orig) return { img: orig, type: 'primary' };
+
+        for (const res of results) {
+            const img = res.images.find(i => String(i.id) === sid);
+            if (img) return { img, type: 'result', resId: res.id };
+        }
+        return null;
+    };
+
+    const handleLensSave = async (newLensSettings) => {
+        // We don't save to state immediately because if we succeed, we overwrite the file (bake it)
+        // and thus want to reset the sliders to 0.
+        // setLensStates(prev => ({ ...prev, ...newLensSettings })); <--- REMOVED
+
+        const imagesToProcess = Object.keys(newLensSettings);
+        console.log('Processing Lens Save for IDs:', imagesToProcess);
+
+        setIsEnhancing(true);
+
+        try {
+            for (const imageId of imagesToProcess) {
+                // Determine finding with robust string ID
+                const found = findImageById(imageId);
+
+                if (!found) {
+                    console.warn(`Image ID ${imageId} not found in state (Type: ${typeof imageId})`);
+                    continue;
+                }
+
+                console.log(`Processing ID ${imageId} found as ${found.type} (State ID: ${found.img.id})`);
+                const settings = newLensSettings[imageId];
+
+                const response = await fetch('/api/perspective', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        imagePath: found.img.path,
+                        settings,
+                        sessionId,
+                        imageId: found.img.id
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const newPath = `${data.straightenedPath || data.processedPath}?t=${Date.now()}`;
+                    console.log('Lens Batch Success:', { imageId, newPath });
+
+                    // Clear lens state (reset sliders) because changes are now baked into the file
+                    setLensStates(prev => {
+                        const next = { ...prev };
+                        delete next[imageId];
+                        return next;
+                    });
+
+                    if (found.type === 'primary') {
+                        setPrimaries(prev => prev.map(o => String(o.id) === String(imageId) ? {
+                            ...o,
+                            path: newPath, // Update main path (In-Place Edit)
+                            lensPath: null // Clear separate lens path
+                        } : o));
+                    } else {
+                        setResults(prev => prev.map(res =>
+                            res.id === found.resId ? {
+                                ...res,
+                                images: res.images.map(img => String(img.id) === String(imageId) ? {
+                                    ...img,
+                                    path: newPath, // Update main path
+                                    lensPath: null,
+                                    enhancedPath: null, // Reset enhancement since base changed
+                                    status: 'pending'
+                                } : img)
+                            } : res
+                        ));
+                    }
+                } else {
+                    console.error('Lens processing failed for', imageId, 'Error:', data.error, 'Details:', data.details);
+                    if (data.error) alert(`Lens processing failed: ${data.error}`);
+                }
+            }
+        } catch (error) {
+            console.error('Batch lens processing error', error);
+            alert('Failed to apply lens corrections');
+        } finally {
+            setIsEnhancing(false);
         }
     };
 
     const handleEditSave = async (newEdits) => {
         // newEdits: { [imageId]: { brightness: 10, ... } }
-        setEditStates(prev => ({ ...prev, ...newEdits }));
+        // We don't save to state immediately because if we succeed, we overwrite the file (bake it)
+        // and thus want to reset the sliders to 0.
+        // setEditStates(prev => ({ ...prev, ...newEdits })); <--- REMOVED
 
         // Identify images to process (those in newEdits)
         const imagesToProcess = Object.keys(newEdits);
-
-        // We need to find the files in originals or results based on ID.
-        // Helper to find image object
-        const findImageById = (id) => {
-            const orig = originals.find(o => o.id === id);
-            if (orig) return { img: orig, type: 'original' };
-
-            for (const res of results) {
-                const img = res.images.find(i => i.id === id);
-                if (img) return { img, type: 'result', resId: res.id };
-            }
-            return null;
-        };
 
         setIsEnhancing(true);
 
@@ -460,11 +622,14 @@ export default function Home() {
                 const adjustments = newEdits[imageId];
                 // Only process if adjustments exist and are not all zero (optional optimization)
 
+                // Determine the correct path to edit (what is currently visible)
+                const sourcePath = found.img.enhancedPath || found.img.lensPath || found.img.path || found.img.originalPath;
+
                 const response = await fetch('/api/edit', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        imagePath: found.img.path,
+                        imagePath: sourcePath,
                         adjustments,
                         sessionId,
                         imageId: found.img.id
@@ -477,21 +642,40 @@ export default function Home() {
                     // We append a query param to bust cache if path is same, or use new path
                     const newPath = `${data.editedPath}?t=${Date.now()}`;
 
-                    if (found.type === 'original') {
-                        setOriginals(prev => prev.map(o => o.id === imageId ? { ...o, path: newPath } : o));
+                    // Clear edit state (reset sliders) because changes are now baked into the file
+                    setEditStates(prev => {
+                        const next = { ...prev };
+                        delete next[imageId];
+                        return next;
+                    });
+
+                    if (found.type === 'primary') {
+                        setPrimaries(prev => prev.map(o => String(o.id) === String(imageId) ? {
+                            ...o,
+                            path: newPath,
+                            // Invalidate lens path because base changed. User must re-apply lens on new color base.
+                            lensPath: null
+                        } : o));
                     } else {
-                        handleUpdateResult(found.resId, found.img.index, { path: newPath }); // Need index?
                         // handleUpdateResult expects index, but we have ID. 
                         // Let's manually update results state for robustness
                         setResults(prev => prev.map(res =>
                             res.id === found.resId ? {
                                 ...res,
-                                images: res.images.map(img => img.id === imageId ? { ...img, path: newPath } : img)
+                                images: res.images.map(img => String(img.id) === String(imageId) ? {
+                                    ...img,
+                                    path: newPath,
+                                    // Invalidate derived paths
+                                    lensPath: null,
+                                    enhancedPath: null,
+                                    status: 'pending' // Reset status if it was processed
+                                } : img)
                             } : res
                         ));
                     }
                 } else {
-                    console.error('Edit failed for', imageId);
+                    const errorText = await response.text();
+                    console.error('Edit failed for', imageId, 'Status:', response.status, 'Error:', errorText);
                 }
             }
         } catch (error) {
@@ -503,8 +687,8 @@ export default function Home() {
     };
     const getSelectedImageObjects = () => {
         const selectedObjs = [];
-        if (activeTabLabel === 'Original') {
-            originals.forEach(o => {
+        if (activeTabLabel === 'Primary') {
+            primaries.forEach(o => {
                 if (selectedImages.has(o.id)) {
                     selectedObjs.push(o);
                 }
@@ -546,8 +730,8 @@ export default function Home() {
                 />
                 <ControlPanel
                     onEnhance={handleEnhance}
-                    disabled={originals.length === 0}
-                    photoCount={originals.length}
+                    disabled={primaries.length === 0}
+                    photoCount={primaries.length}
                     selectedCount={selectedImages.size}
                     activeTabLabel={activeTabLabel}
                     isEnhancing={isEnhancing}
@@ -556,7 +740,7 @@ export default function Home() {
                     onPresetSaved={() => setPresetRefreshTrigger(prev => prev + 1)}
                 />
                 <Gallery
-                    originals={originals}
+                    primaries={primaries}
                     results={results}
                     onUpdateResult={handleUpdateResult}
                     onActiveTabChange={setActiveTabLabel}
@@ -567,6 +751,7 @@ export default function Home() {
                     onRename={handleRename}
 
                     onEdit={() => setShowEditor(true)}
+                    onLensEdit={() => setShowLensEditor(true)}
                 />
             </div>
 
@@ -578,6 +763,17 @@ export default function Home() {
                     selectedImages={getSelectedImageObjects()}
                     onSave={handleEditSave}
                     savedEdits={editStates}
+                />
+            )}
+
+            {/* Lens Editor Modal */}
+            {showLensEditor && (
+                <LensEditorModal
+                    isOpen={true}
+                    onClose={() => setShowLensEditor(false)}
+                    selectedImages={getSelectedImageObjects()}
+                    onSave={handleLensSave}
+                    savedLensSettings={lensStates}
                 />
             )}
 

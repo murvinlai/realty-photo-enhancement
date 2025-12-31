@@ -7,8 +7,8 @@ import { saveAs } from 'file-saver';
 import RenameModal from './RenameModal';
 import DownloadOptions from './DownloadOptions';
 
-export default function Gallery({ originals, results, onUpdateResult, onActiveTabChange, selectedImages, onToggleSelection, onDeleteSelected, onDeselectAll, onRename, onEdit }) {
-    const [activeTab, setActiveTab] = useState('original');
+export default function Gallery({ primaries, results, onUpdateResult, onActiveTabChange, selectedImages, onToggleSelection, onDeleteSelected, onDeselectAll, onRename, onEdit, onLensEdit }) {
+    const [activeTab, setActiveTab] = useState('primary');
     const [lightboxImage, setLightboxImage] = useState(null);
     const [lightboxInstructions, setLightboxInstructions] = useState('');
     const [isEnhancing, setIsEnhancing] = useState(false);
@@ -21,8 +21,8 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
         if (results.length > 0) {
             const newestResult = results[results.length - 1];
             setActiveTab(`result-${newestResult.id}`);
-        } else if (results.length === 0 && activeTab !== 'original') {
-            setActiveTab('original');
+        } else if (results.length === 0 && activeTab !== 'primary') {
+            setActiveTab('primary');
         }
     }, [results.length]);
 
@@ -30,7 +30,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
     useEffect(() => {
         if (onActiveTabChange) {
             // Compute label directly from activeTab
-            let label = 'Original';
+            let label = 'Primary';
             if (activeTab.startsWith('result-')) {
                 const resultId = parseInt(activeTab.replace('result-', ''));
                 label = `Result ${resultId} `;
@@ -39,10 +39,10 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
         }
     }, [activeTab, onActiveTabChange]);
 
-    if (!originals || originals.length === 0) return null;
+    if (!primaries || primaries.length === 0) return null;
 
     const tabs = [
-        { id: 'original', label: 'Original' },
+        { id: 'primary', label: 'Primary' },
         ...results.map(result => ({ id: `result-${result.id}`, label: `Result ${result.id}` }))
     ];
 
@@ -225,9 +225,18 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
             <div style={{
                 display: 'flex',
                 gap: '0.5rem',
-                marginBottom: '1.5rem',
+                marginBottom: '1rem',
                 borderBottom: '2px solid rgba(255,255,255,0.1)',
-                overflowX: 'auto'
+                overflowX: 'auto',
+                position: 'sticky',
+                top: '74px', // Below Header
+                zIndex: 90,
+                background: 'rgba(15, 23, 42, 0.8)',
+                backdropFilter: 'blur(10px)',
+                padding: '0.5rem 0', // Add padding to cover background
+                margin: '0 -2rem 1.5rem', // Negative margin to stretch full width of container, then bottom margin
+                paddingLeft: '2rem', // Restore padding
+                paddingRight: '2rem'
             }}>
                 {tabs.map(tab => (
                     <button
@@ -251,10 +260,22 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                 ))}
             </div>
 
-            {/* Original Tab */}
-            {activeTab === 'original' && (
+            {/* Primary Tab */}
+            {activeTab === 'primary' && (
                 <>
-                    <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{
+                        marginBottom: '1rem',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        position: 'sticky',
+                        top: '135px', // Below Header + Tabs
+                        zIndex: 80,
+                        background: 'rgba(15, 23, 42, 0.9)',
+                        backdropFilter: 'blur(10px)',
+                        padding: '1rem 0',
+                        marginTop: '-1rem' // Compensate for spacing
+                    }}>
                         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                             <button
                                 onClick={onDeselectAll}
@@ -342,14 +363,41 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                     <path d="M12 20h9"></path>
                                     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                                 </svg>
-                                Edit ({selectedImages ? selectedImages.size : 0})
+                                Color Edit ({selectedImages ? selectedImages.size : 0})
+                            </button>
+                            <button
+                                onClick={onLensEdit}
+                                disabled={!selectedImages || selectedImages.size === 0}
+                                style={{
+                                    padding: '0.5rem 1rem',
+                                    background: (!selectedImages || selectedImages.size === 0) ? 'rgba(255,255,255,0.05)' : 'var(--accent)',
+                                    color: (!selectedImages || selectedImages.size === 0) ? 'rgba(255,255,255,0.3)' : 'white',
+                                    border: 'none',
+                                    borderRadius: 'var(--radius)',
+                                    cursor: (!selectedImages || selectedImages.size === 0) ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '600',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    opacity: (!selectedImages || selectedImages.size === 0) ? 0.5 : 1
+                                }}
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                    <line x1="3" y1="9" x2="21" y2="9"></line>
+                                    <line x1="3" y1="15" x2="21" y2="15"></line>
+                                    <line x1="9" y1="3" x2="9" y2="21"></line>
+                                    <line x1="15" y1="3" x2="15" y2="21"></line>
+                                </svg>
+                                Lens Editor ({selectedImages ? selectedImages.size : 0})
                             </button>
                         </div>
                         <div style={{ minWidth: '200px' }}>
                             <DownloadOptions
-                                buttonLabel={isDownloading ? 'Downloading...' : `📥 Download All(${originals.length})`}
-                                onDownloadCustom={() => handleDownloadAll(originals.map(o => ({ ...o, enhancedPath: null })))}
-                                onAdvancedDownload={(opts) => handleDownloadAll(originals.map(o => ({ ...o, enhancedPath: null })), '', opts)}
+                                buttonLabel={isDownloading ? 'Downloading...' : `📥 Download All(${primaries.length})`}
+                                onDownloadCustom={() => handleDownloadAll(primaries.map(o => ({ ...o, enhancedPath: null })))}
+                                onAdvancedDownload={(opts) => handleDownloadAll(primaries.map(o => ({ ...o, enhancedPath: null })), '', opts)}
                             />
                         </div>
                     </div>
@@ -359,7 +407,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                         gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
                         gap: '1.5rem'
                     }}>
-                        {originals.map((img, index) => (
+                        {primaries.map((img, index) => (
                             <div key={index} className="glass" style={{ borderRadius: 'var(--radius)' }}>
                                 <div
                                     style={{
@@ -369,15 +417,34 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                         cursor: 'pointer',
                                         borderTopLeftRadius: 'var(--radius)',
                                         borderTopRightRadius: 'var(--radius)',
-                                        overflow: 'hidden'
+                                        overflow: 'hidden',
+                                        display: 'flex',
+                                        justifyContent: 'center',
+                                        alignItems: 'center'
                                     }}
                                     onClick={() => openLightbox(img.path, img.displayName || img.originalName, null)}
                                 >
                                     {console.log('Rendering Image:', img.originalName, img.path)}
                                     <img
-                                        src={img.path}
+                                        src={img.enhancedPath || img.lensPath || img.path}
                                         alt={img.originalName}
-                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                        style={{
+                                            width: 'auto',
+                                            height: 'auto',
+                                            maxWidth: '100%',
+                                            maxHeight: '100%',
+                                            objectFit: 'contain',
+                                            // Checkerboard only on image
+                                            backgroundImage: `
+                                                linear-gradient(45deg, #333 25%, transparent 25%),
+                                                linear-gradient(-45deg, #333 25%, transparent 25%),
+                                                linear-gradient(45deg, transparent 75%, #333 75%),
+                                                linear-gradient(-45deg, transparent 75%, #333 75%)
+                                            `,
+                                            backgroundSize: '20px 20px',
+                                            backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
+                                            backgroundColor: '#444'
+                                        }}
                                         onError={(e) => console.error('Original Image Load Failed:', img.path, e)}
                                     />
                                     <div
@@ -421,7 +488,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                     </p>
                                     <div style={{ marginTop: '0.5rem' }}>
                                         <DownloadOptions
-                                            imagePath={img.path}
+                                            imagePath={img.lensPath || img.path}
                                             originalName={img.displayName || img.originalName}
                                             onDownloadCustom={handleDownload}
                                         />
@@ -436,7 +503,19 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
             {results.map(result => (
                 activeTab === `result-${result.id}` && (
                     <div key={result.id}>
-                        <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{
+                            marginBottom: '1rem',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            position: 'sticky',
+                            top: '135px', // Below Header + Tabs
+                            zIndex: 80,
+                            background: 'rgba(15, 23, 42, 0.9)',
+                            backdropFilter: 'blur(10px)',
+                            padding: '1rem 0',
+                            marginTop: '-1rem'
+                        }}>
                             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                 <button
                                     onClick={onDeselectAll}
@@ -524,7 +603,34 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                         <path d="M12 20h9"></path>
                                         <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                                     </svg>
-                                    Edit ({selectedImages ? selectedImages.size : 0})
+                                    Color Edit ({selectedImages ? selectedImages.size : 0})
+                                </button>
+                                <button
+                                    onClick={onLensEdit}
+                                    disabled={!selectedImages || selectedImages.size === 0}
+                                    style={{
+                                        padding: '0.5rem 1rem',
+                                        background: (!selectedImages || selectedImages.size === 0) ? 'rgba(255,255,255,0.05)' : 'var(--accent)',
+                                        color: (!selectedImages || selectedImages.size === 0) ? 'rgba(255,255,255,0.3)' : 'white',
+                                        border: 'none',
+                                        borderRadius: 'var(--radius)',
+                                        cursor: (!selectedImages || selectedImages.size === 0) ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        opacity: (!selectedImages || selectedImages.size === 0) ? 0.5 : 1
+                                    }}
+                                >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                        <line x1="3" y1="9" x2="21" y2="9"></line>
+                                        <line x1="3" y1="15" x2="21" y2="15"></line>
+                                        <line x1="9" y1="3" x2="9" y2="21"></line>
+                                        <line x1="15" y1="3" x2="15" y2="21"></line>
+                                    </svg>
+                                    Lens Editor ({selectedImages ? selectedImages.size : 0})
                                 </button>
                             </div>
                             <div style={{ minWidth: '200px' }}>
@@ -551,18 +657,37 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                             cursor: 'pointer',
                                             borderTopLeftRadius: 'var(--radius)',
                                             borderTopRightRadius: 'var(--radius)',
-                                            overflow: 'hidden'
+                                            overflow: 'hidden',
+                                            display: 'flex',
+                                            justifyContent: 'center',
+                                            alignItems: 'center'
                                         }}
-                                        onClick={() => img.enhancedPath && openLightbox(
-                                            img.enhancedPath,
+                                        onClick={() => openLightbox(
+                                            img.enhancedPath || img.lensPath || img.originalPath || img.path,
                                             img.originalName,
-                                            { resultId: result.id, imageIndex: index, originalPath: img.originalPath }
+                                            { resultId: result.id, imageIndex: index, originalPath: img.originalPath || img.path }
                                         )}
                                     >
                                         <img
-                                            src={img.enhancedPath || img.originalPath}
+                                            src={img.enhancedPath || img.lensPath || img.originalPath || img.path}
                                             alt={img.originalName}
-                                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                            style={{
+                                                width: 'auto',
+                                                height: 'auto',
+                                                maxWidth: '100%',
+                                                maxHeight: '100%',
+                                                objectFit: 'contain',
+                                                // Checkerboard only on image
+                                                backgroundImage: `
+                                                    linear-gradient(45deg, #333 25%, transparent 25%),
+                                                    linear-gradient(-45deg, #333 25%, transparent 25%),
+                                                    linear-gradient(45deg, transparent 75%, #333 75%),
+                                                    linear-gradient(-45deg, transparent 75%, #333 75%)
+                                                `,
+                                                backgroundSize: '20px 20px',
+                                                backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
+                                                backgroundColor: '#444'
+                                            }}
                                             onError={(e) => console.error('Result Image Load Failed:', img.enhancedPath || img.originalPath, e)}
                                         />
 
@@ -637,7 +762,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                             <div style={{ marginTop: '0.5rem' }}>
                                                 <DownloadOptions
                                                     imagePath={img.enhancedPath}
-                                                    originalName={img.displayName || `enhanced - ${img.originalName} `}
+                                                    originalName={img.displayName || `enhanced - ${img.originalName}`}
                                                     onDownloadCustom={handleDownload}
                                                 />
                                             </div>
@@ -673,7 +798,19 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                 >
                     {/* Image */}
                     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', maxWidth: '60%' }}>
-                        <div style={{ position: 'relative' }}>
+                        <div style={{
+                            position: 'relative',
+                            // Checkerboard background for transparency in Lightbox
+                            backgroundImage: `
+                                linear-gradient(45deg, #333 25%, transparent 25%),
+                                linear-gradient(-45deg, #333 25%, transparent 25%),
+                                linear-gradient(45deg, transparent 75%, #333 75%),
+                                linear-gradient(-45deg, transparent 75%, #333 75%)
+                            `,
+                            backgroundSize: '20px 20px',
+                            backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
+                            backgroundColor: '#444'
+                        }}>
                             <img
                                 src={lightboxImage.path}
                                 alt={lightboxImage.name}
@@ -681,7 +818,7 @@ export default function Gallery({ originals, results, onUpdateResult, onActiveTa
                                     maxWidth: '100%',
                                     maxHeight: '80vh',
                                     objectFit: 'contain',
-                                    borderRadius: 'var(--radius)'
+                                    // borderRadius: 'var(--radius)' // Can interfere with exact transparency visualization
                                 }}
                             />
                             <div style={{

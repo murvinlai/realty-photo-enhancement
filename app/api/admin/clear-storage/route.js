@@ -4,12 +4,13 @@ import path from 'path';
 
 export async function POST() {
     try {
-        const publicDir = path.join(process.cwd(), 'public');
-        const dirsToClear = ['uploads', 'processed'];
+        const userDataPath = process.env.USER_DATA_PATH;
+        const baseDir = userDataPath ? userDataPath : path.join(process.cwd(), 'public');
+        const dirsToClear = ['uploads', 'primary', 'processed'];
         const results = [];
 
         for (const dirName of dirsToClear) {
-            const dirPath = path.join(publicDir, dirName);
+            const dirPath = path.join(baseDir, dirName);
 
             try {
                 // Check if directory exists

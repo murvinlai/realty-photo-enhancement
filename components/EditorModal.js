@@ -266,7 +266,7 @@ export default function EditorModal({ isOpen, onClose, selectedImages, onSave, s
                             boxShadow: '0 4px 12px rgba(var(--primary-rgb), 0.3)'
                         }}
                     >
-                        Save All Changes
+                        Save all
                     </button>
                 </div>
             </div>

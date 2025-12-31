@@ -89,7 +89,7 @@ export default function ControlPanel({ onEnhance, isEnhancing, disabled, photoCo
                         background: 'rgba(255,255,255,0.05)',
                         borderRadius: '1rem'
                     }}>
-                        {photoCount} {photoCount === 1 ? 'photo' : 'photos'} ({activeTabLabel || 'Original'})
+                        {photoCount} {photoCount === 1 ? 'photo' : 'photos'} ({activeTabLabel || 'Primary'})
                     </span>
                 )}
             </div>
@@ -143,7 +143,7 @@ export default function ControlPanel({ onEnhance, isEnhancing, disabled, photoCo
 
                         <button
                             onClick={() => onEnhance(instructions)}
-                            disabled={disabled || isEnhancing || (activeTabLabel !== 'Original' && !activeTabLabel)}
+                            disabled={disabled || isEnhancing || (activeTabLabel !== 'Primary' && !activeTabLabel)}
                             style={{
                                 width: '100%',
                                 padding: '1rem',
